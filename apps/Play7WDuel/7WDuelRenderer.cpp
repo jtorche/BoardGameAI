@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include <string>
+#include <cmath>
 
 SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, RendererInterface* renderer)
     : m_state(state), m_renderer(renderer)
@@ -222,28 +223,6 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
 }
 
 // ---------------------------------------------------------------------
-void SevenWDuelRenderer::drawMilitaryTrack()
-{
-    float x0 = m_uiPos.militaryTrackX0;
-    float y = m_uiPos.militaryTrackY;
-    float x1 = x0 + m_layout.militaryTrackLength;
-
-    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
-    m_renderer->DrawLine(x0, y + 15, x1, y + 15, Colors::Red);
-
-    int pos = m_state.getMilitary();   // -9 → +9
-    float t = (pos + 9) / 18.0f;
-
-    float markerX = x0 + t * m_layout.militaryTrackLength;
-
-    m_renderer->DrawImage(
-        GetMilitaryMarkerImage(),
-        markerX - 15, y,
-        30, 30
-    );
-}
-
-// ---------------------------------------------------------------------
 void SevenWDuelRenderer::drawScienceTokens()
 {
     float x = m_uiPos.scienceTokensX;
@@ -254,6 +233,7 @@ void SevenWDuelRenderer::drawScienceTokens()
     m_renderer->DrawText("Science Tokens", x, textY, Colors::Green);
 
     for (int i = 0; i < m_state.m_numScienceToken; ++i)
+
     {
         const sevenWD::Card& card = m_state.getPlayableScienceToken(i);
         sevenWD::ScienceToken type = (sevenWD::ScienceToken)card.getSecondaryType();
@@ -265,10 +245,77 @@ void SevenWDuelRenderer::drawScienceTokens()
             m_layout.tokenW,
             m_layout.tokenH
         );
+
     }
 }
 
-// Find the row for a given node
+// ---------------------------------------------------------------------
+void SevenWDuelRenderer::drawMilitaryTrack()
+{
+    float x0 = m_uiPos.militaryTrackX0;
+    float y = m_uiPos.militaryTrackY;
+    float x1 = x0 + m_layout.militaryTrackLength;
+
+    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
+    m_renderer->DrawLine(x0, y + 15, x1, y + 15, Colors::Red);
+
+    // Show numeric military score next to the label
+    int pos = m_state.getMilitary();   // -9 → +9
+    m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
+
+    float t = (pos + 9) / 18.0f;
+    float markerX = x0 + t * m_layout.militaryTrackLength;
+
+    m_renderer->DrawImage(
+        GetMilitaryMarkerImage(),
+        markerX - 15, y,
+        30, 30
+    );
+
+    // Draw three token slots per player at thresholds 1,3,6.
+    const int thresholds[3] = { 1, 3, 6 };
+    SDL_Renderer* rdr = m_renderer->GetSDLRenderer();
+    if (!rdr) return;
+
+    const int radius = 8;
+    // Colors: filled = available (white), outlined = taken (yellow)
+    SDL_Color fillColor{ 255, 255, 255, 255 };
+    SDL_Color outlineColor{ 255, 215, 0, 255 }; // gold-ish for taken
+
+    // Player 0 tokens (positive side)
+    for (int i = 0; i < 3; ++i)
+    {
+        int threshold = thresholds[i];
+        float tx = x0 + (threshold + 9) / 18.0f * m_layout.militaryTrackLength;
+        int cx = int(tx);
+        int cy = int(y + 15);
+
+        bool taken = pos >= threshold;
+        if (taken) {
+            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        } else {
+            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
+        }
+    }
+
+    // Player 1 tokens (negative side)
+    for (int i = 0; i < 3; ++i)
+    {
+        int threshold = thresholds[i];
+        float tx = x0 + ((-threshold) + 9) / 18.0f * m_layout.militaryTrackLength;
+        int cx = int(tx);
+        int cy = int(y + 15);
+
+        bool taken = pos <= -threshold;
+        if (taken) {
+            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        } else {
+            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
 int SevenWDuelRenderer::findGraphRow(u32 nodeIndex) const
 {
     const auto& node = m_state.m_graph[nodeIndex];
@@ -393,10 +440,7 @@ void SevenWDuelRenderer::drawCardGraph()
 // Image loaders (existants)
 SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
 {
-    return m_renderer->LoadImage(
-        // "assets/cards/" + std::to_string(card.getId()) + ".png"
-        "assets/cards/card.png"
-    );
+    return m_renderer->LoadImage("assets/cards/card.png");
 }
 
 SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
@@ -406,18 +450,12 @@ SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
 
 SDL_Texture* SevenWDuelRenderer::GetWonderImage(sevenWD::Wonders wonder)
 {
-    return m_renderer->LoadImage(
-        // "assets/wonders/" + std::to_string(int(wonder)) + ".png"
-        "assets/wonders/wonder.png"
-    );
+    return m_renderer->LoadImage("assets/wonders/wonder.png");
 }
 
 SDL_Texture* SevenWDuelRenderer::GetScienceTokenImage(sevenWD::ScienceToken token)
 {
-    return m_renderer->LoadImage(
-        // "assets/tokens/" + std::to_string(int(token)) + ".png"
-        "assets/tokens/token.png"
-    );
+    return m_renderer->LoadImage("assets/tokens/token.png");
 }
 
 SDL_Texture* SevenWDuelRenderer::GetCoinImage()

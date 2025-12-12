@@ -134,6 +134,43 @@ public:
         SDL_RenderRect(m_renderer, &r);
     }
 
+    void DrawFilledCircle(SDL_Renderer* rdr, int cx, int cy, int r, SDL_Color color)
+    {
+        SDL_SetRenderDrawColor(rdr, color.r, color.g, color.b, color.a);
+        for (int dy = -r; dy <= r; ++dy) {
+            int dx = (int)std::floor(std::sqrt(float(r * r - dy * dy)));
+            SDL_RenderLine(rdr, (float)cx - dx, (float)cy + dy, (float)cx + dx, (float)cy + dy);
+        }
+    }
+
+    void DrawCircleOutline(SDL_Renderer* rdr, int cx, int cy, int r, SDL_Color color)
+    {
+        SDL_SetRenderDrawColor(rdr, color.r, color.g, color.b, color.a);
+        int x = r;
+        int y = 0;
+        int err = 0;
+
+        while (x >= y) {
+            SDL_RenderPoint(rdr, (float)cx + x, (float)cy + y);
+            SDL_RenderPoint(rdr, (float)cx + y, (float)cy + x);
+            SDL_RenderPoint(rdr, (float)cx - y, (float)cy + x);
+            SDL_RenderPoint(rdr, (float)cx - x, (float)cy + y);
+            SDL_RenderPoint(rdr, (float)cx - x, (float)cy - y);
+            SDL_RenderPoint(rdr, (float)cx - y, (float)cy - x);
+            SDL_RenderPoint(rdr, (float)cx + y, (float)cy - x);
+            SDL_RenderPoint(rdr, (float)cx + x, (float)cy - y);
+
+            y += 1;
+            if (err <= 0) {
+                err += 2 * y + 1;
+            }
+            else {
+                x -= 1;
+                err -= 2 * x + 1;
+            }
+        }
+    }
+
 
     void DrawText(const std::string& str, float x, float y, SDL_Color color)
     {
