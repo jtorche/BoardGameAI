@@ -43,57 +43,144 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
         m_layout.playerPanelH + 2 * m_layout.padding
     );
 
-    m_renderer->DrawText("Player " + std::to_string(player + 1),
-        x, y, Colors::White);
+    // Layout constants
+    const float margin = 10.0f;
+    const float innerX = x;
+    const float innerW = m_layout.playerPanelW;
+    const float spacing = 8.0f;
 
-    float rowY = y + 30;
+    // compute row height from the largest icon we'll draw to avoid overlap
+    const float headerTextH = 20.0f;
+    const float coinH = std::min(32.0f, std::max(16.0f, m_layout.resourceIconH + 4.0f));
+    const float resourceH = m_layout.resourceIconH;
+    const float chainingH = m_layout.chainingIconH;
+    const float wonderH = m_layout.wonderH * 0.6f;
+    const float scienceH = 32.0f;
 
-    // GOLD
-    m_renderer->DrawImage(GetCoinImage(), x, rowY, 32, 32);
-    m_renderer->DrawText(std::to_string(city.m_gold),
-        x + 40, rowY + 8, Colors::Yellow);
+    const float baseRowH = std::max({ headerTextH, coinH, resourceH, chainingH, wonderH, scienceH }) + 8.0f;
 
-    // VP
-    m_renderer->DrawText("VP: " + std::to_string(city.m_victoryPoints),
-        x + 120, rowY + 8, Colors::White);
+    // start Y inside panel (top padding)
+    float curY = y + margin;
 
-    // Wonders
-    rowY += 50;
-    m_renderer->DrawText("Wonders:", x, rowY, Colors::Cyan);
+    // Row 0: Player name
+    m_renderer->DrawText("Player " + std::to_string(player + 1), innerX + margin, curY, Colors::White);
+    curY += baseRowH + spacing;
 
-    float wx = x + 100;
-
-    for (int w = 0; w < city.m_unbuildWonderCount; ++w)
+    // Row 1: Gold + VP
     {
-        sevenWD::Wonders wonder = city.m_unbuildWonders[w];
+        const float coinSize = coinH;
+        float imgY = curY + (baseRowH - coinSize) * 0.5f;
+        m_renderer->DrawImage(GetCoinImage(), innerX + margin, imgY, coinSize, coinSize);
+        m_renderer->DrawText(std::to_string(city.m_gold), innerX + margin + coinSize + 8.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::Yellow);
 
-        m_renderer->DrawImage(
-            GetWonderImage(wonder),
-            wx, rowY - 20,
-            m_layout.wonderW,
-            m_layout.wonderH
-        );
-
-        wx += m_layout.wonderW + 6;
+        // right-align VP inside panel with margin
+        std::string vpStr = "VP: " + std::to_string(city.m_victoryPoints);
+        float vpX = innerX + innerW - margin - 80.0f; // reserve width for the VP text
+        m_renderer->DrawText(vpStr, vpX, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
     }
+    curY += baseRowH + spacing;
 
-    // Science Symbols
-    rowY += 85;
-    m_renderer->DrawText("Science:", x, rowY, Colors::Green);
-
-    float sx = x + 100;
-
-    for (int sc = 0; sc < int(sevenWD::ScienceSymbol::Count); ++sc)
+    // Row 2: Production - icons + counts
     {
-        int owned = city.m_ownedScienceSymbol[sc];
-        for (int k = 0; k < owned; ++k)
+        m_renderer->DrawText("Prod:", innerX + margin, curY, Colors::Cyan);
+
+        float rx = innerX + margin + 68.0f; // start after label
+        const int numResources = int(sevenWD::ResourceType::Count);
+        // available width for all resources
+        float availableW = innerW - (rx - innerX) - margin;
+        float perCell = availableW / std::max(1, numResources);
+        perCell = std::max(perCell, 44.0f); // ensure some spacing
+        for (int r = 0; r < numResources; ++r)
         {
-            m_renderer->DrawImage(
-                GetScienceTokenImage(sevenWD::ScienceToken(sc)),
-                sx, rowY - 20,
-                40, 40
-            );
-            sx += 44;
+            sevenWD::ResourceType res = sevenWD::ResourceType(r);
+            SDL_Texture* tex = GetResourceImage(res);
+
+            // calculate icon width that fits perCell and looks reasonable
+            float iconW = std::min(m_layout.resourceIconW, perCell - 30.0f);
+            iconW = std::max(12.0f, iconW);
+            float iconH = iconW;
+
+            // check bounds and break if no space
+            if (rx + iconW + 28.0f > innerX + innerW - margin) break;
+
+            float imgY = curY + (baseRowH - iconH) * 0.5f;
+            m_renderer->DrawImage(tex, rx, imgY, iconW, iconH);
+
+            // value text vertically centered relative to row
+            m_renderer->DrawText(std::to_string(city.m_production[r]), rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+            rx += perCell;
+        }
+    }
+    curY += baseRowH + spacing;
+
+    // Row 3: Weak production
+    {
+        m_renderer->DrawText("Weak:", innerX + margin, curY, Colors::Cyan);
+        std::string weakStr = std::to_string(city.m_weakProduction.first) + " normal, " + std::to_string(city.m_weakProduction.second) + " rare";
+        m_renderer->DrawText(weakStr, innerX + margin + 68.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+    }
+    curY += baseRowH + spacing;
+
+    // Row 4: Chaining symbols - icons only
+    {
+        m_renderer->DrawText("Chain:", innerX + margin, curY, Colors::Cyan);
+        float cx = innerX + margin + 68.0f;
+        float maxX = innerX + innerW - margin;
+        for (u8 s = 0; s < u8(sevenWD::ChainingSymbol::Count); ++s)
+        {
+            if ((city.m_chainingSymbols & (1u << s)) != 0)
+            {
+                if (cx + m_layout.chainingIconW > maxX) break;
+                SDL_Texture* symTex = GetChainingSymbolImage(sevenWD::ChainingSymbol(s));
+                float imgY = curY + (baseRowH - m_layout.chainingIconH) * 0.5f;
+                m_renderer->DrawImage(symTex, cx, imgY, m_layout.chainingIconW, m_layout.chainingIconH);
+                cx += m_layout.chainingIconW + 8.0f;
+            }
+        }
+    }
+    curY += baseRowH + spacing;
+
+    // Row 5: Wonders - scaled to available width
+    {
+        m_renderer->DrawText("Wonders:", innerX + margin, curY, Colors::Cyan);
+        float wx = innerX + margin + 88.0f;
+        int unbuilt = city.m_unbuildWonderCount;
+        if (unbuilt > 0)
+        {
+            float wondersAreaW = (innerX + innerW - margin) - wx;
+            float perW = (wondersAreaW - (unbuilt - 1) * 8.0f) / float(unbuilt);
+            float drawW = std::min(perW, m_layout.wonderW * 0.6f);
+            drawW = std::max(24.0f, drawW);
+            float drawH = drawW * (m_layout.wonderH / m_layout.wonderW);
+            for (int w = 0; w < unbuilt; ++w)
+            {
+                if (wx + drawW > innerX + innerW - margin) break;
+                sevenWD::Wonders wonder = city.m_unbuildWonders[w];
+                float imgY = curY + (baseRowH - drawH) * 0.5f;
+                m_renderer->DrawImage(GetWonderImage(wonder), wx, imgY, drawW, drawH);
+                wx += drawW + 8.0f;
+            }
+        }
+    }
+    curY += baseRowH + spacing;
+
+    // Row 6: Science tokens owned (icons)
+    {
+        m_renderer->DrawText("Science:", innerX + margin, curY, Colors::Green);
+        float sx = innerX + margin + 88.0f;
+        const float scienceIcon = 28.0f;
+        float maxX = innerX + innerW - margin;
+        for (int sc = 0; sc < int(sevenWD::ScienceSymbol::Count); ++sc)
+        {
+            int owned = city.m_ownedScienceSymbol[sc];
+            for (int k = 0; k < owned; ++k)
+            {
+                if (sx + scienceIcon > maxX) break;
+                float imgY = curY + (baseRowH - scienceIcon) * 0.5f;
+                m_renderer->DrawImage(GetScienceTokenImage(sevenWD::ScienceToken(sc)), sx, imgY, scienceIcon, scienceIcon);
+                sx += scienceIcon + 6.0f;
+            }
+            if (sx > maxX) break;
         }
     }
 }
@@ -126,7 +213,9 @@ void SevenWDuelRenderer::drawScienceTokens()
     float x = m_uiPos.scienceTokensX;
     float y = m_uiPos.scienceTokensY;
 
-    m_renderer->DrawText("Science Tokens", x, y - 20, Colors::Green);
+    // Move the label further above the tokens using token height for spacing
+    float textY = y - (m_layout.tokenH * 0.5f) - 12.0f;
+    m_renderer->DrawText("Science Tokens", x, textY, Colors::Green);
 
     for (int i = 0; i < m_state.m_numScienceToken; ++i)
     {
@@ -203,6 +292,13 @@ void SevenWDuelRenderer::drawCardGraph()
         }
         rowCardCounts[row]++;
     }
+
+    // Helper: check if a card (age-local id) is already played
+    auto isAgeCardPlayed = [&](u8 ageId) -> bool {
+        for (u32 i = 0; i < m_state.m_numPlayedAgeCards; ++i)
+            if (m_state.m_playedAgeCards[i] == ageId) return true;
+        return false;
+    };
 
     // Loop through all nodes and draw each card in the correct position
     for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
@@ -316,4 +412,14 @@ SDL_Texture* SevenWDuelRenderer::GetMilitaryMarkerImage()
 SDL_Texture* SevenWDuelRenderer::GetBackgroundPanel()
 {
     return m_renderer->LoadImage("assets/ui/panel.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource)
+{
+    return m_renderer->LoadImage("assets/resources/resource.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
+{
+    return m_renderer->LoadImage("assets/chaining/symbol.png");
 }

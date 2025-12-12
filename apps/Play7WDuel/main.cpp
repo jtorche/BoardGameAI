@@ -1,11 +1,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <iostream>
-#include <unordered_map>
-#include <string>
 
 #include "7WDuelRenderer.h"
-
+#include "7WDuel/GameController.h"
 
 SDL_Window* gWindow = nullptr;
 
@@ -37,11 +35,14 @@ int main(int argc, char** argv)
     // GAME + UI RENDERER
     // -----------------------------------------------------------
     sevenWD::GameContext gameContext;
-    sevenWD::GameState game(gameContext);
+    sevenWD::GameController gameController(gameContext);
     // game.initializeForNewGame();
     
     RendererInterface renderer(gWindow);
-    SevenWDuelRenderer ui(game, &renderer);
+    SevenWDuelRenderer ui(gameController.m_gameState, &renderer);
+
+    // RNG for random move selection
+    std::mt19937 rng(static_cast<uint32_t>(SDL_GetTicks()));
 
     bool running = true;
     Uint64 last = SDL_GetTicks();
@@ -66,7 +67,33 @@ int main(int argc, char** argv)
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 running = false;
 
-            // You can add mouse clicking on cards here
+            // Left arrow: play a random legal move
+            if (e.type == SDL_EVENT_KEY_DOWN)
+            {
+                if (e.key.key == SDLK_LEFT)
+                {
+                    std::vector<sevenWD::Move> moves;
+                    gameController.enumerateMoves(moves);
+                    if (!moves.empty())
+                    {
+                        std::uniform_int_distribution<size_t> dist(0, moves.size() - 1);
+                        const sevenWD::Move& chosen = moves[dist(rng)];
+                        if (gameController.play(chosen))
+                        {
+                            std::cout << "Played random move: ";
+                            gameController.printMove(std::cout, chosen) << "\n";
+                        }
+                        else
+                        {
+                            std::cout << "Attempt to play random move failed\n";
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "No legal moves to play\n";
+                    }
+                }
+            }
         }
 
         // ---- update ----

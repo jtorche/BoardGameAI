@@ -9,7 +9,7 @@ class SevenWDuelRenderer
     struct UIPosition
     {
         float playerPanelX0 = 50.0f; // Player 1 panel X position
-        float playerPanelY = 1020.0f; // Player panel Y position
+        float playerPanelY = 500.0f; // Player panel Y position
         float playerPanelX1 = 1270.0f; // Player 2 panel X position
 
         float pyramidBaseX = 960.0f; // Screen center X for pyramid (adjustable)
@@ -29,6 +29,8 @@ class SevenWDuelRenderer
     SDL_Texture* GetCoinImage();
     SDL_Texture* GetMilitaryMarkerImage();
     SDL_Texture* GetBackgroundPanel();
+    SDL_Texture* GetResourceImage(sevenWD::ResourceType resource);
+    SDL_Texture* GetChainingSymbolImage(sevenWD::ChainingSymbol symbol);
 
 public:
     // ============================
@@ -45,20 +47,30 @@ public:
 
     struct Layout
     {
-        float cardW = 90;
-        float cardH = 130;
+        // Scaled down UI to free space for graph center
+        float cardW = 72.0f;
+        float cardH = 104.0f;
 
-        float wonderW = 120;
-        float wonderH = 70;
+        float wonderW = 96.0f;
+        float wonderH = 56.0f;
 
-        float tokenW = 60;
-        float tokenH = 60;
+        float tokenW = 48.0f;
+        float tokenH = 48.0f;
 
-        float playerPanelW = 400;
-        float playerPanelH = 160;
-        float padding = 8;
+        float playerPanelW = 360.0f;
+        float playerPanelH = 200.0f;
+        float padding = 10.0f;
 
-        float militaryTrackLength = 700;
+        float resourceIconW = 24.0f;
+        float resourceIconH = 24.0f;
+
+        float chainingIconW = 20.0f;
+        float chainingIconH = 20.0f;
+
+        float yellowCardIconW = 20.0f;
+        float yellowCardIconH = 28.0f;
+
+        float militaryTrackLength = 700.0f;
     };
 
 private:
