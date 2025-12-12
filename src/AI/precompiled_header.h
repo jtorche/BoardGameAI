@@ -2,7 +2,6 @@
 
 #if defined(USE_TINY_DNN)
 #pragma warning( push )
-#pragma warning( disable : 4100 )
 #pragma warning( disable : 4616 )
 #pragma warning( disable : 4244 )
 #pragma warning( disable : 4456 )

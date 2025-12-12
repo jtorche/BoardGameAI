@@ -1,5 +1,4 @@
 #include "ML.h"
-#pragma warning( disable : 4100 )
 
 u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext, 
 	sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<sevenWD::GameState>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2])

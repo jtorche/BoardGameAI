@@ -109,7 +109,9 @@ namespace sevenWD
 		template<typename T>
 		void fillExtraTensorData(T* _data) const;
 
-	private:
+		int getMilitary() const { return m_military; }
+
+	public:
 		
 		struct CardNode
 		{
