@@ -121,10 +121,6 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
 
             // Compose display: primary production and optional weak suffix "(+N)" to match regular resource layout
             std::string prodText = std::to_string(prodVal);
-            if (weakVal > 0)
-            {
-                prodText += " (+" + std::to_string(weakVal) + ")";
-            }
 
             // value text vertically centered relative to row
             m_renderer->DrawText(prodText, rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
@@ -290,7 +286,15 @@ void SevenWDuelRenderer::drawMilitaryTrack()
         int cx = int(tx);
         int cy = int(y + 15);
 
-        bool taken = pos >= threshold;
+        bool taken = false;
+        // Use persistent flags for thresholds 3 and 6, keep threshold 1 dynamic
+        if (threshold == 1)
+            taken = pos >= 1;
+        else if (threshold == 3)
+            taken = m_state.getMilitaryToken2(0);
+        else if (threshold == 6)
+            taken = m_state.getMilitaryToken5(0);
+
         if (taken) {
             m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
         } else {
@@ -306,7 +310,14 @@ void SevenWDuelRenderer::drawMilitaryTrack()
         int cx = int(tx);
         int cy = int(y + 15);
 
-        bool taken = pos <= -threshold;
+        bool taken = false;
+        if (threshold == 1)
+            taken = pos <= -1;
+        else if (threshold == 3)
+            taken = m_state.getMilitaryToken2(1);
+        else if (threshold == 6)
+            taken = m_state.getMilitaryToken5(1);
+
         if (taken) {
             m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
         } else {

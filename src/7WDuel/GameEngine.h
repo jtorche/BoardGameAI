@@ -111,6 +111,10 @@ namespace sevenWD
 
 		int getMilitary() const { return m_military; }
 
+		// Added getters for persistent military-token flags so const accessors are available
+		bool getMilitaryToken2(u32 player) const { return militaryToken2[player]; }
+		bool getMilitaryToken5(u32 player) const { return militaryToken5[player]; }
+
 	public:
 		
 		struct CardNode
