@@ -173,7 +173,53 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
     }
     curY += baseRowH + spacing;
 
-    // Row 5: Wonders - scaled to available width
+    // Row 5: Owned Guilds - show one representative card for each owned guild-type
+    {
+        m_renderer->DrawText("Guilds:", innerX + margin, curY, Colors::Yellow);
+        float gx = innerX + margin + 88.0f;
+        float maxX = innerX + innerW - margin;
+        const float guildW = std::min(m_layout.cardW * 0.8f, 48.0f);
+        const float guildH = guildW * (m_layout.cardH / m_layout.cardW);
+
+        // owned guilds are stored as bitfield in PlayerCity::m_ownedGuildCards
+        // find a representative guild card texture for each set bit
+        if (m_state.m_context)
+        {
+            const auto& allGuilds = m_state.m_context->getAllGuildCards();
+            // We will iterate guild types (CardType) and draw if owned.
+            for (u8 type = 0; type < u8(sevenWD::CardType::Count); ++type)
+            {
+                if ((city.m_ownedGuildCards & (1u << type)) == 0) continue;
+
+                // find first guild card whose secondaryType matches this "type"
+                const sevenWD::Card* rep = nullptr;
+                for (const sevenWD::Card& c : allGuilds)
+                {
+                    if (c.getSecondaryType() == type)
+                    {
+                        rep = &c;
+                        break;
+                    }
+                }
+
+                // fallback: if no representative found, skip
+                if (!rep) continue;
+
+                if (gx + guildW > maxX) break;
+                float imgY = curY + (baseRowH - guildH) * 0.5f;
+                SDL_Texture* tex = GetCardImage(*rep);
+                if (tex)
+                    m_renderer->DrawImage(tex, gx, imgY, guildW, guildH);
+                else
+                    m_renderer->DrawText("G", gx, imgY, Colors::Yellow);
+
+                gx += guildW + 8.0f;
+            }
+        }
+    }
+    curY += baseRowH + spacing;
+
+    // Row 6: Wonders - scaled to available width
     {
         m_renderer->DrawText("Wonders:", innerX + margin, curY, Colors::Cyan);
         float wx = innerX + margin + 88.0f;
@@ -197,7 +243,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
     }
     curY += baseRowH + spacing;
 
-    // Row 6: Science tokens owned (icons)
+    // Row 7: Science tokens owned (icons)
     {
         m_renderer->DrawText("Science:", innerX + margin, curY, Colors::Green);
         float sx = innerX + margin + 88.0f;
@@ -286,15 +332,7 @@ void SevenWDuelRenderer::drawMilitaryTrack()
         int cx = int(tx);
         int cy = int(y + 15);
 
-        bool taken = false;
-        // Use persistent flags for thresholds 3 and 6, keep threshold 1 dynamic
-        if (threshold == 1)
-            taken = pos >= 1;
-        else if (threshold == 3)
-            taken = m_state.getMilitaryToken2(0);
-        else if (threshold == 6)
-            taken = m_state.getMilitaryToken5(0);
-
+        bool taken = pos >= threshold;
         if (taken) {
             m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
         } else {
@@ -310,14 +348,7 @@ void SevenWDuelRenderer::drawMilitaryTrack()
         int cx = int(tx);
         int cy = int(y + 15);
 
-        bool taken = false;
-        if (threshold == 1)
-            taken = pos <= -1;
-        else if (threshold == 3)
-            taken = m_state.getMilitaryToken2(1);
-        else if (threshold == 6)
-            taken = m_state.getMilitaryToken5(1);
-
+        bool taken = pos <= -threshold;
         if (taken) {
             m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
         } else {
