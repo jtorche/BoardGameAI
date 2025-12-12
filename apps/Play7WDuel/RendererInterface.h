@@ -45,14 +45,47 @@ public:
         {
             std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << "\n";
         }
+
+        TTF_Init();
+
+        m_font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 24);
+        if (!m_font) {
+            std::cerr << "Failed to load font: " << SDL_GetError() << "\n";
+        }
     }
 
     ~RendererInterface()
     {
-        for (auto& [key, tex] : m_textures)
-            SDL_DestroyTexture(tex);
-        if (m_renderer)
+        // Destroy all cached textures
+        for (auto& pair : m_textures) {
+            if (pair.second) {
+                SDL_DestroyTexture(pair.second);
+            }
+        }
+        m_textures.clear();
+
+        // Destroy text-cache textures
+        for (auto& pair : m_textCache) {
+            if (pair.second) {
+                SDL_DestroyTexture(pair.second);
+            }
+        }
+        m_textCache.clear();
+
+        // Close font
+        if (m_font) {
+            TTF_CloseFont(m_font);
+            m_font = nullptr;
+        }
+
+        // Destroy renderer
+        if (m_renderer) {
             SDL_DestroyRenderer(m_renderer);
+            m_renderer = nullptr;
+        }
+
+        // Quit SDL_ttf AFTER destroying fonts
+        TTF_Quit();
     }
 
     // Load a texture (caches textures)
@@ -117,7 +150,7 @@ public:
         }
         else
         {
-            SDL_Surface* surface = nullptr;// TTF_RenderUTF8_Blended(m_font, str.c_str(), color);
+            SDL_Surface* surface = TTF_RenderText_Blended(m_font, str.c_str(), 0, color);
             if (!surface)
             {
                 SDL_Log("TTF_RenderUTF8_Blended failed: %s", SDL_GetError());
