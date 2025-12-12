@@ -80,7 +80,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
     }
     curY += baseRowH + spacing;
 
-    // Row 2: Production - icons + counts
+    // Row 2: Production - icons + counts (show weak production per resource category inline)
     {
         m_renderer->DrawText("Prod:", innerX + margin, curY, Colors::Cyan);
 
@@ -96,28 +96,64 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y)
             SDL_Texture* tex = GetResourceImage(res);
 
             // calculate icon width that fits perCell and looks reasonable
-            float iconW = std::min(m_layout.resourceIconW, perCell - 30.0f);
+            float iconW = std::min(m_layout.resourceIconW, perCell - 40.0f);
             iconW = std::max(12.0f, iconW);
             float iconH = iconW;
 
             // check bounds and break if no space
-            if (rx + iconW + 28.0f > innerX + innerW - margin) break;
+            if (rx + iconW + 48.0f > innerX + innerW - margin) break;
 
             float imgY = curY + (baseRowH - iconH) * 0.5f;
             m_renderer->DrawImage(tex, rx, imgY, iconW, iconH);
 
+            // primary production value
+            int prodVal = city.m_production[r];
+
+            // determine weak-production applicable to this resource:
+            // - normal weak production applies to Wood/Clay/Stone (first)
+            // - rare weak production applies to Glass/Papyrus (second)
+            int weakVal = 0;
+            if (res == sevenWD::ResourceType::Wood || res == sevenWD::ResourceType::Clay || res == sevenWD::ResourceType::Stone)
+                weakVal = city.m_weakProduction.first;
+            else if (res == sevenWD::ResourceType::Glass || res == sevenWD::ResourceType::Papyrus)
+                weakVal = city.m_weakProduction.second;
+
+            // Compose display: primary production and optional weak suffix "(+N)" to match regular resource layout
+            std::string prodText = std::to_string(prodVal);
+            if (weakVal > 0)
+            {
+                prodText += " (+" + std::to_string(weakVal) + ")";
+            }
+
             // value text vertically centered relative to row
-            m_renderer->DrawText(std::to_string(city.m_production[r]), rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+            m_renderer->DrawText(prodText, rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+
             rx += perCell;
         }
     }
     curY += baseRowH + spacing;
 
-    // Row 3: Weak production
+    // Row 3: Weak production - explicit icons + numbers (normal / rare)
     {
         m_renderer->DrawText("Weak:", innerX + margin, curY, Colors::Cyan);
-        std::string weakStr = std::to_string(city.m_weakProduction.first) + " normal, " + std::to_string(city.m_weakProduction.second) + " rare";
-        m_renderer->DrawText(weakStr, innerX + margin + 68.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+
+        // Normal (applies to Wood / Clay / Stone)
+        float wx = innerX + margin + 68.0f;
+        SDL_Texture* normalTex = GetWeakNormalImage();
+        float nW = m_layout.weakIconW;
+        float nH = m_layout.weakIconH;
+        float imgYN = curY + (baseRowH - nH) * 0.5f;
+        m_renderer->DrawImage(normalTex, wx, imgYN, nW, nH);
+        m_renderer->DrawText(std::to_string(city.m_weakProduction.first), wx + nW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+
+        // Rare
+        float rxRare = wx + nW + 36.0f;
+        SDL_Texture* rareTex = GetWeakRareImage();
+        float rW = m_layout.weakIconW;
+        float rH = m_layout.weakIconH;
+        float imgYR = curY + (baseRowH - rH) * 0.5f;
+        m_renderer->DrawImage(rareTex, rxRare, imgYR, rW, rH);
+        m_renderer->DrawText(std::to_string(city.m_weakProduction.second), rxRare + rW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
     }
     curY += baseRowH + spacing;
 
@@ -422,4 +458,15 @@ SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource
 SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
 {
     return m_renderer->LoadImage("assets/chaining/symbol.png");
+}
+
+// New weak icons
+SDL_Texture* SevenWDuelRenderer::GetWeakNormalImage()
+{
+    return m_renderer->LoadImage("assets/resources/weak_normal.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetWeakRareImage()
+{
+    return m_renderer->LoadImage("assets/resources/weak_rare.png");
 }

@@ -31,6 +31,8 @@ class SevenWDuelRenderer
     SDL_Texture* GetBackgroundPanel();
     SDL_Texture* GetResourceImage(sevenWD::ResourceType resource);
     SDL_Texture* GetChainingSymbolImage(sevenWD::ChainingSymbol symbol);
+    SDL_Texture* GetWeakNormalImage();
+    SDL_Texture* GetWeakRareImage();
 
 public:
     // ============================
@@ -69,6 +71,10 @@ public:
 
         float yellowCardIconW = 20.0f;
         float yellowCardIconH = 28.0f;
+
+        // weak-production icons
+        float weakIconW = 20.0f;
+        float weakIconH = 20.0f;
 
         float militaryTrackLength = 700.0f;
     };
