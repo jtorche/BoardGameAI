@@ -306,68 +306,58 @@ int SevenWDuelRenderer::findGraphColumn(u32 nodeIndex) const
 // Draw the card graph (pyramid)
 void SevenWDuelRenderer::drawCardGraph()
 {
-    // Use the UIPosition values for the pyramid positioning
-    const float baseX = m_uiPos.pyramidBaseX; // X position for the base of the pyramid
-    const float baseY = m_uiPos.pyramidBaseY; // Y position for the base of the pyramid
+    const float baseX = m_uiPos.pyramidBaseX;
+    const float baseY = m_uiPos.pyramidBaseY;
 
-    const float dX = m_layout.cardW + 16.0f;  // Space between cards horizontally
-    const float dY = m_layout.cardH + 20.0f;  // Space between rows vertically
+    const float dX = m_layout.cardW + 16.0f;
+    const float dY = m_layout.cardH + 20.0f;
 
     const auto& graph = m_state.m_graph;
 
-    // Create a dictionary to store the number of cards in each row
+    // Count nodes per row (keep slots stable)
     std::vector<int> rowCardCounts;
-
-    // Count how many cards are in each row (by row depth)
     for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
     {
         const int row = findGraphRow(nodeIndex);
         if (rowCardCounts.size() <= row)
-        {
             rowCardCounts.resize(row + 1, 0);
-        }
         rowCardCounts[row]++;
     }
 
-    // Helper: check if a card (age-local id) is already played
+    // Helper: check if a card (age-local id) has been played
     auto isAgeCardPlayed = [&](u8 ageId) -> bool {
         for (u32 i = 0; i < m_state.m_numPlayedAgeCards; ++i)
             if (m_state.m_playedAgeCards[i] == ageId) return true;
         return false;
     };
 
-    // Loop through all nodes and draw each card in the correct position
+    // Draw nodes in their fixed slots. If a visible card was picked, do NOT draw it.
     for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
     {
         const auto& node = graph[nodeIndex];
 
-        // Find the row and column for this card
         const int row = findGraphRow(nodeIndex);
         const int col = findGraphColumn(nodeIndex);
 
-        // Calculate total width of all cards in this row
+        if (row >= int(rowCardCounts.size()) || rowCardCounts[row] == 0)
+            continue;
+
         const float rowWidth = rowCardCounts[row] * dX;
-
-        // Calculate the starting X position to center the row
         const float rowStartX = baseX - (rowWidth / 2.0f);
-
-        // Calculate the X position for this specific card in the row
         const float x = rowStartX + col * dX;
-
-        // Calculate the Y position based on the row
         const float y = baseY + row * dY;
 
-        SDL_Texture* texture = nullptr;
-
-        // ---------------------------------------------------------------
-        // Visible: draw real card + highlight if playable
-        // ---------------------------------------------------------------
+        // Visible node: real card (unless it's been played -> skip)
         if (node.m_visible)
         {
             const sevenWD::Card& card = m_state.m_context->getCard(node.m_cardId);
-            texture = GetCardImage(card);
 
-            // Check if node is playable
+            // If this card (by age id) has been played, skip drawing it (keeps empty slot)
+            if (isAgeCardPlayed(card.getAgeId()))
+                continue;
+
+            SDL_Texture* texture = GetCardImage(card);
+
             bool isPlayable = false;
             for (int i = 0; i < m_state.m_numPlayableCards; ++i)
             {
@@ -378,7 +368,6 @@ void SevenWDuelRenderer::drawCardGraph()
                 }
             }
 
-            // Draw a highlight if the card is playable
             if (isPlayable)
             {
                 m_renderer->DrawRect(
@@ -389,19 +378,15 @@ void SevenWDuelRenderer::drawCardGraph()
                     Colors::Yellow
                 );
             }
+
+            m_renderer->DrawImage(texture, x, y, m_layout.cardW, m_layout.cardH);
         }
-        // ---------------------------------------------------------------
-        // Hidden: draw card back if not visible
-        // ---------------------------------------------------------------
+        // Hidden node: draw card back (slot reserved)
         else
         {
-            texture = GetCardBackImage();
+            SDL_Texture* back = GetCardBackImage();
+            m_renderer->DrawImage(back, x, y, m_layout.cardW, m_layout.cardH);
         }
-
-        // ---------------------------------------------------------------
-        // Draw the final card image
-        // ---------------------------------------------------------------
-        m_renderer->DrawImage(texture, x, y, m_layout.cardW, m_layout.cardH);
     }
 }
 
