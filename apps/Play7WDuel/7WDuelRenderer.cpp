@@ -13,14 +13,8 @@ SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, Renderer
 {
 }
 
-// (m_lastClickedNode/m_lastClickTime/m_doubleClickMs are initialized in header in-class)
-// Updated entry point: consumes UIState pointer and updates it (hover, selection, requestedMove)
-// If ui == nullptr the renderer runs in read-only display mode (no interactions).
-void SevenWDuelRenderer::draw(UIState* ui)
+void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
 {
-    // NOTE: time-based double-click detection is used (no frame counter needed)
-
-    // If interactive UIState provided, reset transient hover fields each frame
     if (ui)
     {
         ui->hoveredNode = -1;
@@ -32,6 +26,13 @@ void SevenWDuelRenderer::draw(UIState* ui)
     }
 
     drawBackground();
+    drawPlayerCityButtons(ui, uiGameState);
+
+    if (uiGameState && uiGameState->viewingPlayerCity && uiGameState->viewedPlayer >= 0)
+    {
+        drawPlayerCityView(ui, uiGameState);
+        return;
+    }
 
     // Draw current player turn in the top-left (always shown, interactive or read-only)
     {
@@ -40,7 +41,6 @@ void SevenWDuelRenderer::draw(UIState* ui)
         m_renderer->DrawText(turnText, 20.0f, 20.0f, Colors::White);
     }
 
-    // If application provided a GameController pointer in UIState, render controller info.
     if (ui && ui->gameController)
     {
         const sevenWD::GameController* gc = ui->gameController;
@@ -82,7 +82,6 @@ void SevenWDuelRenderer::draw(UIState* ui)
     drawMilitaryTrack();
     drawScienceTokens(ui);
     drawCardGraph(ui);
-    // draw any selected card's magnified view / cost on top
     drawSelectedCard(ui);
 }
 
@@ -382,6 +381,199 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
             }
             if (sx > maxX) break;
         }
+    }
+}
+
+void SevenWDuelRenderer::drawPlayerCityButtons(UIState* ui, UIGameState* uiGameState)
+{
+    const float buttonW = 150.0f;
+    const float buttonH = 44.0f;
+    const float topY = 75.0f;
+    const float startX = 210.0f;
+    const float spacing = 28.0f;
+
+    auto drawButton = [&](float x, float y, const std::string& label, bool hovered, bool active)
+    {
+        SDL_Texture* panel = GetBackgroundPanel();
+        if (panel)
+            m_renderer->DrawImage(panel, x, y, buttonW, buttonH);
+        SDL_Color borderColor = active ? Colors::Green : (hovered ? Colors::Yellow : Colors::White);
+        m_renderer->DrawRect(x, y, buttonW, buttonH, borderColor);
+        m_renderer->DrawText(label, x + 14.0f, y + 12.0f, Colors::White);
+    };
+
+    for (int player = 0; player < 2; ++player)
+    {
+        float x = startX + player * (buttonW + spacing);
+        bool hovered = ui && ui->mouseX >= int(x) && ui->mouseX <= int(x + buttonW) &&
+                        ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
+        bool active = uiGameState && uiGameState->viewingPlayerCity && uiGameState->viewedPlayer == player;
+
+        drawButton(x, topY, "Player " + std::to_string(player + 1) + " city", hovered, active);
+
+        if (ui && uiGameState && ui->leftClick && hovered)
+        {
+            uiGameState->viewingPlayerCity = true;
+            uiGameState->viewedPlayer = player;
+            ui->selectedNode = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+        }
+    }
+
+    if (uiGameState && uiGameState->viewingPlayerCity)
+    {
+        float backX = startX - buttonW - spacing;
+        bool hovered = ui && ui->mouseX >= int(backX) && ui->mouseX <= int(backX + buttonW) &&
+                        ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
+        drawButton(backX, topY, "Back", hovered, false);
+        if (ui && ui->leftClick && hovered)
+        {
+            uiGameState->resetView();
+        }
+    }
+}
+
+void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGameState)
+{
+    if (!uiGameState || !uiGameState->viewingPlayerCity || uiGameState->viewedPlayer < 0)
+        return;
+
+    int player = std::clamp(uiGameState->viewedPlayer, 0, 1);
+    const auto& cards = uiGameState->pickedCards[player];
+
+    const float panelX = 120.0f;
+    const float panelY = 140.0f;
+    const float panelW = 1680.0f;
+    const float panelH = 840.0f;
+    SDL_Texture* panel = GetBackgroundPanel();
+    if (panel)
+        m_renderer->DrawImage(panel, panelX, panelY, panelW, panelH);
+
+    std::string header = "Player " + std::to_string(player + 1) + " city (" + std::to_string(cards.size()) + " cards)";
+    m_renderer->DrawText(header, panelX + 18.0f, panelY + 18.0f, Colors::Yellow);
+
+    if (cards.empty())
+    {
+        m_renderer->DrawText("No cards picked yet.", panelX + 18.0f, panelY + 60.0f, Colors::White);
+        return;
+    }
+
+    const std::array<sevenWD::CardType, 9> order = {
+        sevenWD::CardType::Brown,
+        sevenWD::CardType::Grey,
+        sevenWD::CardType::Yellow,
+        sevenWD::CardType::Blue,
+        sevenWD::CardType::Military,
+        sevenWD::CardType::Science,
+        sevenWD::CardType::Guild,
+        sevenWD::CardType::Wonder,
+        sevenWD::CardType::ScienceToken
+    };
+
+    float y = panelY + 60.0f;
+    const float innerX = panelX + 24.0f;
+    const float innerWidth = panelW - 48.0f;
+
+    for (auto type : order)
+    {
+        std::vector<const sevenWD::Card*> filtered;
+        filtered.reserve(cards.size());
+        for (const sevenWD::Card* card : cards)
+        {
+            if (card && card->getType() == type)
+                filtered.push_back(card);
+        }
+
+        if (filtered.empty())
+            continue;
+
+        const char* typeName = cardTypeToString(type);
+        m_renderer->DrawText(typeName ? typeName : "Cards", innerX, y, Colors::Cyan);
+        y += 28.0f;
+        float used = drawPlayerCityCardGrid(filtered, innerX, y, innerWidth);
+        y += used + 20.0f;
+        if (y > panelY + panelH - 60.0f)
+            break;
+    }
+}
+
+float SevenWDuelRenderer::drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth)
+{
+    if (cards.empty())
+        return 0.0f;
+
+    const float cardW = 110.0f;
+    const float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+    const float spacing = 18.0f;
+    const float labelH = 22.0f;
+
+    int perRow = std::max(1, int((maxWidth + spacing) / (cardW + spacing)));
+    float x = startX;
+    float y = startY;
+    int col = 0;
+
+    for (const sevenWD::Card* card : cards)
+    {
+        drawCityCardSprite(*card, x, y, cardW, cardH);
+        const char* name = card ? card->getName() : nullptr;
+        if (name && name[0] != '\0')
+            m_renderer->DrawText(name, x, y + cardH + 4.0f, Colors::White);
+
+        ++col;
+        if (col >= perRow)
+        {
+            col = 0;
+            x = startX;
+            y += cardH + spacing + labelH;
+        }
+        else
+        {
+            x += cardW + spacing;
+        }
+    }
+
+    int rows = int((cards.size() + perRow - 1) / perRow);
+    float rowHeight = cardH + spacing + labelH;
+    return std::max(0, rows) * rowHeight - spacing;
+}
+
+void SevenWDuelRenderer::drawCityCardSprite(const sevenWD::Card& card, float x, float y, float w, float h)
+{
+    SDL_Texture* tex = nullptr;
+    if (card.getType() == sevenWD::CardType::Wonder)
+    {
+        tex = GetWonderImage(static_cast<sevenWD::Wonders>(card.getSecondaryType()));
+    }
+    else if (card.getType() == sevenWD::CardType::ScienceToken)
+    {
+        tex = GetScienceTokenImage(static_cast<sevenWD::ScienceToken>(card.getSecondaryType()));
+    }
+    else
+    {
+        tex = GetCardImage(card);
+    }
+
+    if (tex)
+        m_renderer->DrawImage(tex, x, y, w, h);
+    else
+        m_renderer->DrawText("[missing]", x, y, Colors::White);
+}
+
+const char* SevenWDuelRenderer::cardTypeToString(sevenWD::CardType type) const
+{
+    switch (type)
+    {
+    case sevenWD::CardType::Brown: return "Brown";
+    case sevenWD::CardType::Grey: return "Grey";
+    case sevenWD::CardType::Yellow: return "Yellow";
+    case sevenWD::CardType::Blue: return "Blue";
+    case sevenWD::CardType::Military: return "Military";
+    case sevenWD::CardType::Science: return "Science";
+    case sevenWD::CardType::Guild: return "Guild";
+    case sevenWD::CardType::Wonder: return "Wonder";
+    case sevenWD::CardType::ScienceToken: return "Science Tokens";
+    default: return "Cards";
     }
 }
 

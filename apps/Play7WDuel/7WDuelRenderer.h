@@ -4,6 +4,21 @@
 #include "7WDuel/GameEngine.h"
 #include "7WDuel/GameController.h"
 #include <chrono>
+#include <array>
+#include <vector>
+
+struct UIGameState
+{
+    std::array<std::vector<const sevenWD::Card*>, 2> pickedCards;
+    bool viewingPlayerCity = false;
+    int viewedPlayer = -1;
+
+    void resetView()
+    {
+        viewingPlayerCity = false;
+        viewedPlayer = -1;
+    }
+};
 
 class SevenWDuelRenderer
 {
@@ -17,10 +32,10 @@ public:
         float pyramidBaseX = 960.0f; // Screen center X for pyramid (adjustable)
         float pyramidBaseY = 260.0f; // Y position of pyramid
 
-        float militaryTrackX0 = 600.0f; // X position of military track start
+        float militaryTrackX0 = 620.0f; // X position of military track start
         float militaryTrackY = 40.0f;  // Y position of military track
 
-        float scienceTokensX = 800.0f; // X position for science tokens
+        float scienceTokensX = 820.0f; // X position for science tokens
         float scienceTokensY = 130.0f; // Y position for science tokens
         // region where a selected card is shown magnified (controlled by app)
         float magnifiedX = 1400.0f;
@@ -142,7 +157,7 @@ public:
     // renderer will read mouse events and write hover/selection information
     // and (if a move was chosen) populates UIState::requestedMove + sets
     // UIState::moveRequested = true.
-    void draw(UIState* ui);
+    void draw(UIState* ui, UIGameState* uiGameState);
 
 private:
     void drawBackground();
@@ -151,6 +166,11 @@ private:
     void drawMilitaryTrack();
     void drawScienceTokens(UIState* ui);
     void drawSelectedCard(UIState* ui);
+    void drawPlayerCityButtons(UIState* ui, UIGameState* uiGameState);
+    void drawPlayerCityView(UIState* ui, UIGameState* uiGameState);
+    float drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth);
+    void drawCityCardSprite(const sevenWD::Card& card, float x, float y, float w, float h);
+    const char* cardTypeToString(sevenWD::CardType type) const;
 
     // Graph layout helpers
     int findGraphRow(u32 nodeIndex) const;

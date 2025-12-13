@@ -5,6 +5,7 @@
 #include <vector>
 #include <random>
 #include <memory>
+#include <algorithm>
 
 #include "7WDuelRenderer.h"
 #include "7WDuel/GameController.h"
@@ -88,6 +89,7 @@ int main(int argc, char** argv)
 
     // UI state is owned by the application (transient clicks, mouse pos, etc.)
     SevenWDuelRenderer::UIState uiState;
+    UIGameState uiGameState;
     // Provide pointer to GameController so renderer may display controller state
     uiState.gameController = &gameController;
 
@@ -112,13 +114,14 @@ int main(int argc, char** argv)
         sevenWD::GameState state;
         sevenWD::GameController::State controllerState;
         sevenWD::WinType winType;
+        UIGameState uiGameState;
     };
 
     std::vector<Snapshot> history;
     size_t historyIndex = 0;
 
     // Save initial state
-    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
+    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType, uiGameState });
     historyIndex = 0;
 
     // Helper to restore a snapshot and reset transient UI
@@ -130,6 +133,7 @@ int main(int argc, char** argv)
         gameController.m_gameState = history[idx].state;
         gameController.m_state = history[idx].controllerState;
         gameController.m_winType = history[idx].winType;
+        uiGameState = history[idx].uiGameState;
 
         // Reset transient UI state to avoid accidental double-actions
         uiState.moveRequested = false;
@@ -140,6 +144,83 @@ int main(int argc, char** argv)
         uiState.hoveredWonder = -1;
         uiState.selectedWonder = -1;
         uiState.requestedMove = sevenWD::Move{};
+    };
+
+    auto removeRecordedCard = [&](u32 player, u8 cardId)
+    {
+        if (player >= uiGameState.pickedCards.size())
+            return;
+        auto& entries = uiGameState.pickedCards[player];
+        auto it = std::find_if(entries.begin(), entries.end(), [&](const sevenWD::Card* card)
+        {
+            return card && card->getId() == cardId;
+        });
+        if (it != entries.end())
+            entries.erase(it);
+    };
+
+    auto recordMoveForUI = [&](u32 actingPlayer, const sevenWD::Move& move)
+    {
+        using Action = sevenWD::Move::Action;
+        switch (move.action)
+        {
+        case Action::Pick:
+        {
+            const sevenWD::Card& card = gameController.m_gameState.getPlayableCard(move.playableCard);
+            uiGameState.pickedCards[actingPlayer].push_back(&card);
+            break;
+        }
+        case Action::BuildWonder:
+        {
+            const sevenWD::Card& wonderCard = gameController.m_gameState.getCurrentPlayerWonder(move.wonderIndex);
+            uiGameState.pickedCards[actingPlayer].push_back(&wonderCard);
+            sevenWD::Wonders wonder = static_cast<sevenWD::Wonders>(wonderCard.getSecondaryType());
+            if (wonder == sevenWD::Wonders::Mausoleum && move.additionalId != u8(-1))
+            {
+                uiGameState.pickedCards[actingPlayer].push_back(&gameContext.getCard(move.additionalId));
+            }
+            else if ((wonder == sevenWD::Wonders::Zeus || wonder == sevenWD::Wonders::CircusMaximus) && move.additionalId != u8(-1))
+            {
+                removeRecordedCard((actingPlayer + 1) % 2, move.additionalId);
+            }
+            break;
+        }
+        case Action::ScienceToken:
+        {
+            const sevenWD::Card* tokenCard = nullptr;
+            auto ctrlState = gameController.m_state;
+            if (ctrlState == sevenWD::GameController::State::PickScienceToken)
+            {
+                tokenCard = &gameController.m_gameState.getPlayableScienceToken(move.playableCard);
+            }
+            else if ((ctrlState == sevenWD::GameController::State::GreatLibraryToken ||
+                      ctrlState == sevenWD::GameController::State::GreatLibraryTokenThenReplay) &&
+                      move.additionalId != u8(-1))
+            {
+                tokenCard = &gameContext.getCard(move.additionalId);
+            }
+
+            if (tokenCard)
+                uiGameState.pickedCards[actingPlayer].push_back(tokenCard);
+            break;
+        }
+        default:
+            break;
+        }
+    };
+
+    auto playMove = [&](const sevenWD::Move& move)
+    {
+        const u32 actingPlayer = gameController.m_gameState.getCurrentPlayerTurn();
+        recordMoveForUI(actingPlayer, move);
+        bool ended = gameController.play(move);
+
+        if (historyIndex + 1 < history.size())
+            history.resize(historyIndex + 1);
+
+        history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType, uiGameState });
+        historyIndex = history.size() - 1;
+        return ended;
     };
 
     // -----------------------------------------------------------
@@ -189,17 +270,9 @@ int main(int argc, char** argv)
                             gameController.printMove(std::cout, chosen) << "\n";
 
                             // Execute move. play(...) returns true if the game ended as a result.
-                            bool ended = gameController.play(chosen);
+                            bool ended = playMove(chosen);
                             if (ended)
                                 std::cout << "Game ended after this move.\n";
-
-                            // Truncate forward history if we rewound before playing new move
-                            if (historyIndex + 1 < history.size())
-                                history.resize(historyIndex + 1);
-
-                            // Save resulting state to history and advance index
-                            history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
-                            historyIndex = history.size() - 1;
                         }
                         else
                         {
@@ -260,7 +333,7 @@ int main(int argc, char** argv)
         SDL_RenderClear(renderer.GetSDLRenderer());
 
         // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
-        ui.draw(&uiState);
+        ui.draw(&uiState, &uiGameState);
 
         // If renderer requested a move, validate it against legal moves before executing.
         if (uiState.moveRequested)
@@ -297,16 +370,8 @@ int main(int argc, char** argv)
 
                 if (valid)
                 {
-                    bool end = gameController.play(uiState.requestedMove);
+                    bool end = playMove(uiState.requestedMove);
                     (void)end;
-
-                    // Truncate forward history if we rewound before playing new move
-                    if (historyIndex + 1 < history.size())
-                        history.resize(historyIndex + 1);
-
-                    // Save resulting state to history and advance index
-                    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
-                    historyIndex = history.size() - 1;
 
                     // After a move is played, reset transient UI selection
                     uiState.selectedWonder = -1;
