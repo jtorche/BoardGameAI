@@ -25,7 +25,8 @@ void SevenWDuelRenderer::draw(UIState* ui)
     {
         ui->hoveredNode = -1;
         ui->hoveredPlayableIndex = -1;
-        ui->hoveredWonder = -1;
+        ui->hoveredWonderPlayer = -1;
+        ui->hoveredWonderIndex = -1;
         ui->hoveredScienceToken = -1;
         ui->moveRequested = false;
     }
@@ -312,35 +313,47 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
                 SDL_Texture* tex = GetWonderImage(wonder);
                 m_renderer->DrawImage(GetWonderImage(wonder), wx, imgY, drawW, drawH);
 
-                // Hit detection: if mouse is over this wonder record that in UIState (only if ui provided)
+                // Hit detection: store both owner(player) and index to avoid
+                // ambiguity between the two panels.
                 if (ui && ui->mouseX >= int(wx) && ui->mouseX < int(wx + drawW) &&
                     ui->mouseY >= int(imgY) && ui->mouseY < int(imgY + drawH))
                 {
-                    ui->hoveredWonder = w;
+                    ui->hoveredWonderPlayer = player;
+                    ui->hoveredWonderIndex = w;
                 }
 
                 // If user clicked the wonder -> toggle selection (only if it's the current player's panel)
                 // We set selection only for the current player (m_state.getCurrentPlayerTurn())
                 if (player == (int)m_state.getCurrentPlayerTurn() && ui)
                 {
-                    if (ui->leftClick && ui->hoveredWonder == w)
+                    // Only consider clicks if the hovered wonder belongs to this panel.
+                    bool hoveredHere = (ui->hoveredWonderPlayer == player && ui->hoveredWonderIndex == w);
+
+                    if (ui->leftClick && hoveredHere)
                     {
-                        // toggle selection
-                        if (ui->selectedWonder == w)
-                            ui->selectedWonder = -1;
+                        // toggle selection remembering owner + index
+                        if (ui->selectedWonderPlayer == player && ui->selectedWonderIndex == w)
+                        {
+                            ui->selectedWonderPlayer = -1;
+                            ui->selectedWonderIndex = -1;
+                        }
                         else
-                            ui->selectedWonder = w;
+                        {
+                            ui->selectedWonderPlayer = player;
+                            ui->selectedWonderIndex = w;
+                        }
                     }
 
-                    // Right click cancels selection
-                    if (ui->rightClick && ui->selectedWonder != -1)
+                    // Right click cancels selection only for this player's selection
+                    if (ui->rightClick && ui->selectedWonderPlayer == player && ui->selectedWonderIndex != -1)
                     {
-                        ui->selectedWonder = -1;
+                        ui->selectedWonderPlayer = -1;
+                        ui->selectedWonderIndex = -1;
                     }
                 }
 
                 // If this wonder is selected draw an outline (only highlight visually; selection is stored in UIState if interactive)
-                if (ui && ui->selectedWonder == w && player == (int)m_state.getCurrentPlayerTurn())
+                if (ui && ui->selectedWonderPlayer == player && ui->selectedWonderIndex == w && player == (int)m_state.getCurrentPlayerTurn())
                 {
                     m_renderer->DrawRect(wx - 4.0f, imgY - 4.0f, drawW + 8.0f, drawH + 8.0f, Colors::Green);
                 }
@@ -571,12 +584,14 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                 m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Red);
             }
 
-            // If user has selected a wonder (waiting for a card to use), highlight playable slots
-            if (ui && ui->selectedWonder >= 0 && isPlayable && m_state.getCurrentPlayerTurn() == 0 /* selected wonder only valid for current player - renderer cannot modify game turn, but we highlight anyway */)
-            {
-                // draw subtle green hint on top
-                m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
-            }
+            // If the current player has selected one of their wonders, highlight playable slots.
+            if (ui && ui->selectedWonderIndex >= 0 &&
+                ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn() &&
+                isPlayable)
+             {
+                 // draw subtle green hint on top
+                 m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
+             }
 
             // NEW: selection / double-click logic:
             int playableIdx = playableIndexOfNode[nodeIndex];
@@ -593,57 +608,59 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                     if (ui->selectedNode == int(nodeIndex) &&
                         m_lastClickedNode == int(nodeIndex) &&
                         (now - m_lastClickTime) <= std::chrono::milliseconds(m_doubleClickMs))
-                    {
-                        // confirmed action: build wonder if selectedWonder set, otherwise pick
-                        if (ui->selectedWonder >= 0)
-                        {
-                            sevenWD::Move mv;
-                            mv.playableCard = u8(playableIdx);
-                            mv.action = sevenWD::Move::Action::BuildWonder;
-                            mv.wonderIndex = u8(ui->selectedWonder);
-                            mv.additionalId = u8(-1);
+                     {
+                        // confirmed action: build wonder if the current player's wonder is selected, otherwise pick
+                        if (ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn())
+                         {
+                             sevenWD::Move mv;
+                             mv.playableCard = u8(playableIdx);
+                             mv.action = sevenWD::Move::Action::BuildWonder;
+                             mv.wonderIndex = u8(ui->selectedWonderIndex);
+                             mv.additionalId = u8(-1);
 
-                            ui->requestedMove = mv;
-                            ui->moveRequested = true;
-                            ui->selectedWonder = -1;
-                        }
-                        else
-                        {
-                            sevenWD::Move mv;
-                            mv.playableCard = u8(playableIdx);
-                            mv.action = sevenWD::Move::Action::Pick;
-                            mv.wonderIndex = u8(-1);
-                            mv.additionalId = u8(-1);
+                             ui->requestedMove = mv;
+                             ui->moveRequested = true;
+                             ui->selectedWonderPlayer = -1;
+                             ui->selectedWonderIndex = -1;
+                         }
+                         else
+                         {
+                             sevenWD::Move mv;
+                             mv.playableCard = u8(playableIdx);
+                             mv.action = sevenWD::Move::Action::Pick;
+                             mv.wonderIndex = u8(-1);
+                             mv.additionalId = u8(-1);
 
-                            ui->requestedMove = mv;
-                            ui->moveRequested = true;
-                        }
+                             ui->requestedMove = mv;
+                             ui->moveRequested = true;
+                         }
 
                         // clear selection after confirming
                         ui->selectedNode = -1;
                         m_lastClickedNode = -1;
                         m_lastClickTime = std::chrono::steady_clock::time_point::min();
-                    }
-                    else
-                    {
+                     }
+                     else
+                     {
                         // first click -> select node (highlight in red)
                         ui->selectedNode = int(nodeIndex);
                         m_lastClickedNode = int(nodeIndex);
                         m_lastClickTime = now;
-                    }
+                     }
                 }
-                // allow burning on right-click if not selecting
-                else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx && ui->selectedWonder == -1)
-                {
-                    sevenWD::Move mv;
-                    mv.playableCard = u8(playableIdx);
-                    mv.action = sevenWD::Move::Action::Burn;
-                    mv.wonderIndex = u8(-1);
-                    mv.additionalId = u8(-1);
+                // allow burning on right-click if not selecting and no wonder selected by current player
+                else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx &&
+                         !(ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn()))
+                 {
+                     sevenWD::Move mv;
+                     mv.playableCard = u8(playableIdx);
+                     mv.action = sevenWD::Move::Action::Burn;
+                     mv.wonderIndex = u8(-1);
+                     mv.additionalId = u8(-1);
 
-                    ui->requestedMove = mv;
-                    ui->moveRequested = true;
-                }
+                     ui->requestedMove = mv;
+                     ui->moveRequested = true;
+                 }
             }
         }
         // Hidden node: draw card back (slot reserved)
@@ -806,9 +823,76 @@ void SevenWDuelRenderer::drawMilitaryTrack()
 
 // ---------------------------------------------------------------------
 // Draw the currently selected node's magnified view + cost (if any)
+// Prioritize a selected wonder preview: if a wonder is selected it stays
+// magnified even when a node is selected on top.
 void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
 {
-    if (!ui || ui->selectedNode < 0)
+    if (!ui)
+        return;
+
+    // --- Wonder preview (owner+index) ---
+    int owner = ui->selectedWonderPlayer;
+    int widx = ui->selectedWonderIndex;
+
+    if (owner >= 0 && widx >= 0)
+    {
+        // validate owner and index
+        if (owner == 0 || owner == 1)
+        {
+            const sevenWD::PlayerCity& city = m_state.getPlayerCity(owner);
+            if (widx >= 0 && widx < city.m_unbuildWonderCount)
+            {
+                sevenWD::Wonders wonder = city.m_unbuildWonders[widx];
+
+                // magnified area from UIPosition
+                float mx = m_uiPos.magnifiedX;
+                float my = m_uiPos.magnifiedY;
+                float mw = m_uiPos.magnifiedW;
+                float mh = m_uiPos.magnifiedH;
+
+                // enlarge background to leave space for optional title/cost area
+                const float topPad = 20.0f;
+                const float sidePad = 8.0f;
+                const float bottomPad = 12.0f;
+                m_renderer->DrawImage(GetBackgroundPanel(), mx - sidePad, my - topPad - sidePad, mw + sidePad * 2.0f, mh + topPad + bottomPad + sidePad);
+
+                // draw wonder image (use wonder-specific image loader)
+                SDL_Texture* wtex = GetWonderImage(wonder);
+                if (wtex)
+                {
+                    // Preserve wonder aspect ratio defined by layout.wonderW / wonderH
+                    float aspect = (m_layout.wonderW > 0.0f && m_layout.wonderH > 0.0f)
+                                       ? (m_layout.wonderW / m_layout.wonderH)
+                                       : (m_layout.cardW / m_layout.cardH);
+
+                    // fit into mw x mh while preserving aspect
+                    float targetW = std::min(mw, mh * aspect);
+                    float targetH = targetW / aspect;
+                    if (targetH > mh) // fallback if numeric issues
+                    {
+                        targetH = mh;
+                        targetW = targetH * aspect;
+                    }
+
+                    // center inside the magnified area
+                    float drawX = mx + (mw - targetW) * 0.5f;
+                    float drawY = my + (mh - targetH) * 0.5f;
+
+                    m_renderer->DrawImage(wtex, drawX, drawY, targetW, targetH);
+                }
+                else
+                {
+                    m_renderer->DrawText("[no wonder image]", mx + 8.0f, my + 8.0f, Colors::White);
+                }
+
+                // Done — wonder preview must stay visible even if a node is selected.
+                return;
+            }
+        }
+    }
+
+    // --- Card preview (if no wonder preview active) ---
+    if (ui->selectedNode < 0)
         return;
 
     u32 nodeIndex = u32(ui->selectedNode);

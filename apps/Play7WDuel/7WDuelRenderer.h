@@ -3,6 +3,7 @@
 #include "RendererInterface.h"
 #include "7WDuel/GameEngine.h"
 #include "7WDuel/GameController.h"
+#include <chrono>
 
 class SevenWDuelRenderer
 {
@@ -52,15 +53,18 @@ public:
         // Hover / selection helpers (written by renderer each draw)
         int hoveredNode = -1;           // node index in the graph the mouse is over
         int hoveredPlayableIndex = -1;  // playable index (index into m_playableCards) if hovered
-        int hoveredWonder = -1;         // wonder index in current player's unbuilt wonders
+        // wonder index in current player's unbuilt wonders
+        int hoveredWonderPlayer = -1;    // which player panel the hovered wonder belongs to
+        int hoveredWonderIndex = -1;     // index inside that player's m_unbuildWonders
         int hoveredScienceToken = -1;   // index of hovered science token on the science token area
+        int hoveredWonder = -1;         // <-- Add this line to fix the error
         int selectedNode = -1;          // node index selected by first click (requires double-click to confirm)
 
-        // When user clicked a wonder to build, this becomes the wonder index
-        // (index into PlayerCity::m_unbuildWonders). If >=0 the renderer will
-        // highlight the wonder and expect the player to pick a playable card to
-        // build the wonder with. Right click cancels selection.
-        int selectedWonder = -1;
+        // When user clicked a wonder to build we remember both owner and index.
+        // This prevents ambiguous indices across both player panels.
+        int selectedWonderPlayer = -1;  // player owning the selected wonder, -1 if none
+        int selectedWonderIndex = -1;   // index inside that player's m_unbuildWonders, -1 if none
+        int selectedWonder = -1;        // Add this line to fix the error
 
         // If renderer detected a move selection it sets this and leaves it to
         // caller to execute and reset (moveRequested -> true -> caller executes move).
