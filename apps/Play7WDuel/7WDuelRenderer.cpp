@@ -33,6 +33,44 @@ void SevenWDuelRenderer::draw(UIState* ui)
         m_renderer->DrawText(turnText, 20.0f, 20.0f, Colors::White);
     }
 
+    // If application provided a GameController pointer in UIState, render controller info.
+    if (ui && ui->gameController)
+    {
+        const sevenWD::GameController* gc = ui->gameController;
+
+        auto stateToStr = [](sevenWD::GameController::State s) -> const char*
+        {
+            using S = sevenWD::GameController::State;
+            switch (s)
+            {
+            case S::Play: return "Play";
+            case S::PickScienceToken: return "PickScienceToken";
+            case S::GreatLibraryToken: return "GreatLibraryToken";
+            case S::GreatLibraryTokenThenReplay: return "GreatLibraryTokenThenReplay";
+            case S::WinPlayer0: return "WinPlayer0";
+            case S::WinPlayer1: return "WinPlayer1";
+            default: return "Unknown";
+            }
+        };
+
+        auto winToStr = [](sevenWD::WinType w) -> const char*
+        {
+            switch (w)
+            {
+            case sevenWD::WinType::None: return "None";
+            case sevenWD::WinType::Civil: return "Civil";
+            case sevenWD::WinType::Military: return "Military";
+            case sevenWD::WinType::Science: return "Science";
+            default: return "Unknown";
+            }
+        };
+
+        std::string ctrlText = std::string("Controller: ") + stateToStr(gc->m_state) +
+                               "  WinType: " + winToStr(gc->m_winType);
+        // draw below the player-turn text
+        m_renderer->DrawText(ctrlText, 20.0f, 44.0f, Colors::Yellow);
+    }
+
     drawPlayers(ui);
     drawMilitaryTrack();
     drawScienceTokens();

@@ -49,6 +49,8 @@ int main(int argc, char** argv)
 
     // UI state is owned by the application (transient clicks, mouse pos, etc.)
     SevenWDuelRenderer::UIState uiState;
+    // Provide pointer to GameController so renderer may display controller state
+    uiState.gameController = &gameController;
     // Ensure initial mouse position is set
     float mx, my;
     SDL_GetMouseState(&mx, &my);

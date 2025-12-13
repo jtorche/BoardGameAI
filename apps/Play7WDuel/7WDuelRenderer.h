@@ -10,17 +10,17 @@ public:
     struct UIPosition
     {
         float playerPanelX0 = 50.0f; // Player 1 panel X position
-        float playerPanelY = 510.0f; // Player panel Y position
+        float playerPanelY = 500.0f; // Player panel Y position
         float playerPanelX1 = 1270.0f; // Player 2 panel X position
 
         float pyramidBaseX = 960.0f; // Screen center X for pyramid (adjustable)
-        float pyramidBaseY = 270.0f; // Y position of pyramid
+        float pyramidBaseY = 260.0f; // Y position of pyramid
 
-        float militaryTrackX0 = 200.0f; // X position of military track start
-        float militaryTrackY = 60.0f;  // Y position of military track
+        float militaryTrackX0 = 600.0f; // X position of military track start
+        float militaryTrackY = 40.0f;  // Y position of military track
 
-        float scienceTokensX = 650.0f; // X position for science tokens
-        float scienceTokensY = 120.0f; // Y position for science tokens
+        float scienceTokensX = 800.0f; // X position for science tokens
+        float scienceTokensY = 130.0f; // Y position for science tokens
     };
 
     // UI state is stored outside the renderer. The application must fill mouse
@@ -32,9 +32,11 @@ public:
     //  - If the renderer detects a user action it sets `moveRequested` to true
     //    and fills `requestedMove`. The application should consume that move and
     //    then call GameController::play(...) or otherwise handle it.
-    // NOTE: UIState is now passed as a pointer. If `ui` is nullptr the renderer
+    // NOTE: UIState is passed as a pointer. If `ui` is nullptr the renderer
     // will only display the current game state and will not read or write any
-    // interactive fields (no hover/click handling).
+    // interactive fields (no hover/click handling). The application can also
+    // pass a pointer to the active GameController in `gameController` so the
+    // renderer can display controller state (read-only).
     struct UIState
     {
         int mouseX = 0;
@@ -57,6 +59,11 @@ public:
         // caller to execute and reset (moveRequested -> true -> caller executes move).
         bool moveRequested = false;
         sevenWD::Move requestedMove {};
+
+        // Optional pointer to the GameController (read-only). If set the renderer
+        // will display controller state (mode, win type, etc.). The renderer
+        // will never mutate the controller through this pointer.
+        const sevenWD::GameController* gameController = nullptr;
     };
 
     // ============================
