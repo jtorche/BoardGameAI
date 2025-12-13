@@ -503,10 +503,12 @@ float SevenWDuelRenderer::drawPlayerCityCardGrid(const std::vector<const sevenWD
     if (cards.empty())
         return 0.0f;
 
-    const float cardW = 110.0f;
+    // Scaled down card sizing so more cards fit the player city view.
+    // Removed name label under cards to save vertical space.
+    const float cardW = 88.0f; // reduced from 110
     const float cardH = cardW * (m_layout.cardH / m_layout.cardW);
-    const float spacing = 18.0f;
-    const float labelH = 22.0f;
+    const float spacing = 12.0f; // reduced spacing
+    const float labelH = 0.0f;   // no card name printed anymore
 
     int perRow = std::max(1, int((maxWidth + spacing) / (cardW + spacing)));
     float x = startX;
@@ -516,9 +518,6 @@ float SevenWDuelRenderer::drawPlayerCityCardGrid(const std::vector<const sevenWD
     for (const sevenWD::Card* card : cards)
     {
         drawCityCardSprite(*card, x, y, cardW, cardH);
-        const char* name = card ? card->getName() : nullptr;
-        if (name && name[0] != '\0')
-            m_renderer->DrawText(name, x, y + cardH + 4.0f, Colors::White);
 
         ++col;
         if (col >= perRow)
