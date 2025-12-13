@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <iostream>
+#include <string>
 
 #include "7WDuelRenderer.h"
 #include "7WDuel/GameController.h"
@@ -51,11 +52,19 @@ int main(int argc, char** argv)
     SevenWDuelRenderer::UIState uiState;
     // Provide pointer to GameController so renderer may display controller state
     uiState.gameController = &gameController;
+
     // Ensure initial mouse position is set
     float mx, my;
     SDL_GetMouseState(&mx, &my);
     uiState.mouseX = static_cast<int>(mx + 0.5f);
     uiState.mouseY = static_cast<int>(my + 0.5f);
+
+    // Helper to check if the controller is in a terminal (win) state
+    auto isGameOver = [&gameController]() -> bool
+    {
+        using S = sevenWD::GameController::State;
+        return gameController.m_state == S::WinPlayer0 || gameController.m_state == S::WinPlayer1;
+    };
 
     // -----------------------------------------------------------
     // MAIN LOOP
@@ -82,30 +91,38 @@ int main(int argc, char** argv)
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 running = false;
 
-            // Left arrow: play a random legal move
+            // Left arrow: play a random legal move (only while game active)
             if (e.type == SDL_EVENT_KEY_DOWN)
             {
                 if (e.key.key == SDLK_LEFT)
                 {
-                    std::vector<sevenWD::Move> moves;
-                    gameController.enumerateMoves(moves);
-                    if (!moves.empty())
+                    if (isGameOver())
                     {
-                        std::uniform_int_distribution<size_t> dist(0, moves.size() - 1);
-                        const sevenWD::Move& chosen = moves[dist(rng)];
-                        if (gameController.play(chosen))
-                        {
-                            std::cout << "Played random move: ";
-                            gameController.printMove(std::cout, chosen) << "\n";
-                        }
-                        else
-                        {
-                            std::cout << "Attempt to play random move failed\n";
-                        }
+                        std::cout << "Game has ended. No moves can be played.\n";
                     }
                     else
                     {
-                        std::cout << "No legal moves to play\n";
+                        std::vector<sevenWD::Move> moves;
+                        gameController.enumerateMoves(moves);
+                        if (!moves.empty())
+                        {
+                            // Choose a random move from the list returned by enumerateMoves.
+                            std::uniform_int_distribution<size_t> dist(0, moves.size() - 1);
+                            sevenWD::Move chosen = moves[dist(rng)]; // copy is fine
+
+                            // enumerateMoves produced this move, so it's already legal for current state.
+                            std::cout << "Playing random move: ";
+                            gameController.printMove(std::cout, chosen) << "\n";
+
+                            // Execute move. play(...) returns true if the game ended as a result.
+                            bool ended = gameController.play(chosen);
+                            if (ended)
+                                std::cout << "Game ended after this move.\n";
+                        }
+                        else
+                        {
+                            std::cout << "No legal moves to play\n";
+                        }
                     }
                 }
             }
@@ -148,43 +165,54 @@ int main(int argc, char** argv)
         // If renderer requested a move, validate it against legal moves before executing.
         if (uiState.moveRequested)
         {
-            std::vector<sevenWD::Move> legalMoves;
-            gameController.enumerateMoves(legalMoves);
-
-            auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
-                return a.action == b.action &&
-                       a.playableCard == b.playableCard &&
-                       a.wonderIndex == b.wonderIndex &&
-                       a.additionalId == b.additionalId;
-            };
-
-            bool valid = false;
-            for (const auto& m : legalMoves)
+            if (isGameOver())
             {
-                if (moveEqual(m, uiState.requestedMove))
-                {
-                    valid = true;
-                    break;
-                }
-            }
-
-            if (valid)
-            {
-                bool end = gameController.play(uiState.requestedMove);
-                (void)end;
+                // If game already ended ignore any requested moves and inform.
+                std::cout << "Ignoring requested move: game already ended.\n";
+                uiState.moveRequested = false;
+                uiState.leftClick = false;
+                uiState.rightClick = false;
             }
             else
             {
-                std::cout << "Illegal move attempted: ";
-                gameController.printMove(std::cout, uiState.requestedMove) << "\n";
+                std::vector<sevenWD::Move> legalMoves;
+                gameController.enumerateMoves(legalMoves);
+
+                auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
+                    return a.action == b.action &&
+                           a.playableCard == b.playableCard &&
+                           a.wonderIndex == b.wonderIndex &&
+                           a.additionalId == b.additionalId;
+                };
+
+                bool valid = false;
+                for (const auto& m : legalMoves)
+                {
+                    if (moveEqual(m, uiState.requestedMove))
+                    {
+                        valid = true;
+                        break;
+                    }
+                }
+
+                if (valid)
+                {
+                    bool end = gameController.play(uiState.requestedMove);
+                    (void)end;
+                }
+                else
+                {
+                    std::cout << "Illegal move attempted: ";
+                    gameController.printMove(std::cout, uiState.requestedMove) << "\n";
+                }
+
+                // Consume the requested move so it won't be processed again
+                uiState.moveRequested = false;
+
+                // Clear transient clicks to avoid double-processing in same frame
+                uiState.leftClick = false;
+                uiState.rightClick = false;
             }
-
-            // Consume the requested move so it won't be processed again
-            uiState.moveRequested = false;
-
-            // Clear transient clicks to avoid double-processing in same frame
-            uiState.leftClick = false;
-            uiState.rightClick = false;
         }
 
         SDL_RenderPresent(renderer.GetSDLRenderer());

@@ -47,8 +47,8 @@ void SevenWDuelRenderer::draw(UIState* ui)
             case S::PickScienceToken: return "PickScienceToken";
             case S::GreatLibraryToken: return "GreatLibraryToken";
             case S::GreatLibraryTokenThenReplay: return "GreatLibraryTokenThenReplay";
-            case S::WinPlayer0: return "WinPlayer0";
-            case S::WinPlayer1: return "WinPlayer1";
+            case S::WinPlayer0: return "WinPlayer 1";
+            case S::WinPlayer1: return "WinPlayer 2";
             default: return "Unknown";
             }
         };
