@@ -83,7 +83,7 @@ int main(int argc, char** argv)
             // Left arrow: play a random legal move
             if (e.type == SDL_EVENT_KEY_DOWN)
             {
-                if (e.key.key == SDLK_RIGHT)
+                if (e.key.key == SDLK_LEFT)
                 {
                     std::vector<sevenWD::Move> moves;
                     gameController.enumerateMoves(moves);
@@ -143,12 +143,39 @@ int main(int argc, char** argv)
         // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
         ui.draw(uiState);
 
-        // If renderer requested a move, execute it here (app is responsible for mutating game state)
+        // If renderer requested a move, validate it against legal moves before executing.
         if (uiState.moveRequested)
         {
-            // Execute the requested move through the game controller.
-            bool end = gameController.play(uiState.requestedMove);
-            (void)end; // caller may inspect controller.m_state if needed
+            std::vector<sevenWD::Move> legalMoves;
+            gameController.enumerateMoves(legalMoves);
+
+            auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
+                return a.action == b.action &&
+                       a.playableCard == b.playableCard &&
+                       a.wonderIndex == b.wonderIndex &&
+                       a.additionalId == b.additionalId;
+            };
+
+            bool valid = false;
+            for (const auto& m : legalMoves)
+            {
+                if (moveEqual(m, uiState.requestedMove))
+                {
+                    valid = true;
+                    break;
+                }
+            }
+
+            if (valid)
+            {
+                bool end = gameController.play(uiState.requestedMove);
+                (void)end;
+            }
+            else
+            {
+                std::cout << "Illegal move attempted: ";
+                gameController.printMove(std::cout, uiState.requestedMove) << "\n";
+            }
 
             // Consume the requested move so it won't be processed again
             uiState.moveRequested = false;
