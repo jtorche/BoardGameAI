@@ -189,6 +189,7 @@ namespace sevenWD
 	SpecialAction GameState::buildWonder(u32 _withPlayableCardIndex, u32 _wondersIndex, u8 _additionalEffect)
 	{
 		DEBUG_ASSERT(_withPlayableCardIndex < m_numPlayableCards);
+
 		u8 pickedCard = m_playableCards[_withPlayableCardIndex];
 		std::swap(m_playableCards[_withPlayableCardIndex], m_playableCards[m_numPlayableCards - 1]);
 		m_numPlayableCards--;
@@ -219,6 +220,8 @@ namespace sevenWD
 			const Card& revivedCard = m_context->getCard(_additionalEffect);
 			getCurrentPlayerCity().addCard(revivedCard, otherPlayer);
 		}
+
+		DEBUG_ASSERT((m_playerCity[0].m_unbuildWonderCount + m_playerCity[1].m_unbuildWonderCount) > 0);
 
 		SpecialAction action =  getCurrentPlayerCity().addCard(wonder, otherPlayer);
 		if (abs(m_military) >= 9)

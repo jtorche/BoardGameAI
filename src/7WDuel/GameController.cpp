@@ -24,57 +24,62 @@ namespace sevenWD
 					_moves.push_back(Move{ i, Move::Action::Burn });
 			}
 
-			for (u8 i = 0; i < m_gameState.getCurrentPlayerCity().m_unbuildWonderCount; ++i)
+			u8 totalUnbuilt = m_gameState.m_playerCity[0].m_unbuildWonderCount + m_gameState.m_playerCity[1].m_unbuildWonderCount;
+			u8 builtSoFar = 8 - totalUnbuilt;
+			if (builtSoFar < 7) // 7 wonders max
 			{
-				Wonders wonder = m_gameState.getCurrentPlayerCity().m_unbuildWonders[i];
-				const Card& wonderCard = m_gameState.m_context->getWonder(wonder);
-
-				u32 cost = m_gameState.getCurrentPlayerCity().computeCost(wonderCard, m_gameState.getOtherPlayerCity());
-				if (cost <= m_gameState.getCurrentPlayerCity().m_gold)
+				for (u8 i = 0; i < m_gameState.getCurrentPlayerCity().m_unbuildWonderCount; ++i)
 				{
-					for (u8 burnIndex = 0; burnIndex < m_gameState.m_numPlayableCards; ++burnIndex)
+					Wonders wonder = m_gameState.getCurrentPlayerCity().m_unbuildWonders[i];
+					const Card& wonderCard = m_gameState.m_context->getWonder(wonder);
+
+					u32 cost = m_gameState.getCurrentPlayerCity().computeCost(wonderCard, m_gameState.getOtherPlayerCity());
+					if (cost <= m_gameState.getCurrentPlayerCity().m_gold)
 					{
-						Move move{ burnIndex, Move::Action::BuildWonder, i };
+						for (u8 burnIndex = 0; burnIndex < m_gameState.m_numPlayableCards; ++burnIndex)
+						{
+							Move move{ burnIndex, Move::Action::BuildWonder, i };
 
-						switch (wonder)
-						{
-						case Wonders::Zeus:
-						{
-							size_t prevMoveCount = _moves.size();
-							for (u32 r = u32(ResourceType::FirstBrown); r <= u32(ResourceType::LastBrown); ++r)
+							switch (wonder)
 							{
-								if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
-								{
-									move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
-									_moves.push_back(move);
-								}
-							}
-							if (prevMoveCount == _moves.size())
-								_moves.push_back(move);
-						}
-							break;
-
-						case Wonders::CircusMaximus:
-						{
-							size_t prevMoveCount = _moves.size();
-							for (u32 r = u32(ResourceType::FirstGrey); r <= u32(ResourceType::LastGrey); ++r)
+							case Wonders::Zeus:
 							{
-								if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
+								size_t prevMoveCount = _moves.size();
+								for (u32 r = u32(ResourceType::FirstBrown); r <= u32(ResourceType::LastBrown); ++r)
 								{
-									move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
-									_moves.push_back(move);
+									if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
+									{
+										move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
+										_moves.push_back(move);
+									}
 								}
+								if (prevMoveCount == _moves.size())
+									_moves.push_back(move);
 							}
-							if (prevMoveCount == _moves.size())
-								_moves.push_back(move);
-						}
-							break;
+								break;
 
-						case Wonders::Mausoleum:
-							
-						default:
-							_moves.push_back(move);
-							break;
+							case Wonders::CircusMaximus:
+							{
+								size_t prevMoveCount = _moves.size();
+								for (u32 r = u32(ResourceType::FirstGrey); r <= u32(ResourceType::LastGrey); ++r)
+								{
+									if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
+									{
+										move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
+										_moves.push_back(move);
+									}
+								}
+								if (prevMoveCount == _moves.size())
+									_moves.push_back(move);
+							}
+								break;
+
+							case Wonders::Mausoleum:
+								
+							default:
+								_moves.push_back(move);
+								break;
+							}
 						}
 					}
 				}
