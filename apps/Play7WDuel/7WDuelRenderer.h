@@ -21,6 +21,11 @@ public:
 
         float scienceTokensX = 800.0f; // X position for science tokens
         float scienceTokensY = 130.0f; // Y position for science tokens
+        // region where a selected card is shown magnified (controlled by app)
+        float magnifiedX = 1400.0f;
+        float magnifiedY = 40.0f;
+        float magnifiedW = 320.0f;
+        float magnifiedH = 464.0f;
     };
 
     // UI state is stored outside the renderer. The application must fill mouse
@@ -49,6 +54,7 @@ public:
         int hoveredPlayableIndex = -1;  // playable index (index into m_playableCards) if hovered
         int hoveredWonder = -1;         // wonder index in current player's unbuilt wonders
         int hoveredScienceToken = -1;   // index of hovered science token on the science token area
+        int selectedNode = -1;          // node index selected by first click (requires double-click to confirm)
 
         // When user clicked a wonder to build, this becomes the wonder index
         // (index into PlayerCity::m_unbuildWonders). If >=0 the renderer will
@@ -116,6 +122,10 @@ private:
     RendererInterface* m_renderer;
     Layout m_layout;
     UIPosition m_uiPos; // Instance of UIPosition for global UI adjustments
+    // double-click / click-tracking (time-based)
+    int m_lastClickedNode = -1;
+    std::chrono::steady_clock::time_point m_lastClickTime = std::chrono::steady_clock::time_point::min();
+    int m_doubleClickMs = 400; // ms within which two clicks count as a double-click
 
 public:
     SevenWDuelRenderer(const sevenWD::GameState& state, RendererInterface* renderer);
@@ -136,6 +146,7 @@ private:
     void drawPlayerPanel(int player, float x, float y, UIState* ui);
     void drawMilitaryTrack();
     void drawScienceTokens(UIState* ui);
+    void drawSelectedCard(UIState* ui);
 
     // Graph layout helpers
     int findGraphRow(u32 nodeIndex) const;

@@ -5,6 +5,7 @@
 #include <string>
 #include <cmath>
 #include <cctype> // added for sanitizing card names
+#include <chrono> // used for double-click timing
 
 // keep previous constructor
 SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, RendererInterface* renderer)
@@ -12,10 +13,13 @@ SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, Renderer
 {
 }
 
+// (m_lastClickedNode/m_lastClickTime/m_doubleClickMs are initialized in header in-class)
 // Updated entry point: consumes UIState pointer and updates it (hover, selection, requestedMove)
 // If ui == nullptr the renderer runs in read-only display mode (no interactions).
 void SevenWDuelRenderer::draw(UIState* ui)
 {
+    // NOTE: time-based double-click detection is used (no frame counter needed)
+
     // If interactive UIState provided, reset transient hover fields each frame
     if (ui)
     {
@@ -77,6 +81,8 @@ void SevenWDuelRenderer::draw(UIState* ui)
     drawMilitaryTrack();
     drawScienceTokens(ui);
     drawCardGraph(ui);
+    // draw any selected card's magnified view / cost on top
+    drawSelectedCard(ui);
 }
 
 // ---------------------------------------------------------------------
@@ -544,6 +550,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
 
             bool isPlayable = playableIndexOfNode[nodeIndex] != -1;
 
+            // draw yellow playable background rect first (acts as border)
             if (isPlayable)
             {
                 m_renderer->DrawRect(
@@ -555,66 +562,87 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                 );
             }
 
+            // draw the card image (must be drawn before outlines that should appear on top)
+            m_renderer->DrawImage(texture, x, y, m_layout.cardW, m_layout.cardH);
+
+            // If this node is selected (single click), draw a red outline on top of the card
+            if (ui && ui->selectedNode == int(nodeIndex))
+            {
+                m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Red);
+            }
+
             // If user has selected a wonder (waiting for a card to use), highlight playable slots
             if (ui && ui->selectedWonder >= 0 && isPlayable && m_state.getCurrentPlayerTurn() == 0 /* selected wonder only valid for current player - renderer cannot modify game turn, but we highlight anyway */)
             {
-                // draw subtle green hint
+                // draw subtle green hint on top
                 m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
             }
 
-            m_renderer->DrawImage(texture, x, y, m_layout.cardW, m_layout.cardH);
-
-            // If the mouse is hovering over this playable card and a click occurred, set requested move in UIState (only if ui provided)
+            // NEW: selection / double-click logic:
             int playableIdx = playableIndexOfNode[nodeIndex];
-            if (playableIdx != -1 && ui)
+            if (ui && playableIdx != -1)
             {
+                // right click cancels selection
+                if (ui->rightClick && ui->selectedNode != -1)
+                    ui->selectedNode = -1;
+
                 if (ui->leftClick && ui->hoveredPlayableIndex == playableIdx)
                 {
-                    if (ui->selectedWonder >= 0)
+                    // use time-based double-click detection
+                    auto now = std::chrono::steady_clock::now();
+                    if (ui->selectedNode == int(nodeIndex) &&
+                        m_lastClickedNode == int(nodeIndex) &&
+                        (now - m_lastClickTime) <= std::chrono::milliseconds(m_doubleClickMs))
                     {
-                        // Build wonder using this playable card
-                        sevenWD::Move mv;
-                        mv.playableCard = u8(playableIdx);
-                        mv.action = sevenWD::Move::Action::BuildWonder;
-                        mv.wonderIndex = u8(ui->selectedWonder);
-                        mv.additionalId = u8(-1);
+                        // confirmed action: build wonder if selectedWonder set, otherwise pick
+                        if (ui->selectedWonder >= 0)
+                        {
+                            sevenWD::Move mv;
+                            mv.playableCard = u8(playableIdx);
+                            mv.action = sevenWD::Move::Action::BuildWonder;
+                            mv.wonderIndex = u8(ui->selectedWonder);
+                            mv.additionalId = u8(-1);
 
-                        ui->requestedMove = mv;
-                        ui->moveRequested = true;
-                        ui->selectedWonder = -1; // clear selection after issuing move
+                            ui->requestedMove = mv;
+                            ui->moveRequested = true;
+                            ui->selectedWonder = -1;
+                        }
+                        else
+                        {
+                            sevenWD::Move mv;
+                            mv.playableCard = u8(playableIdx);
+                            mv.action = sevenWD::Move::Action::Pick;
+                            mv.wonderIndex = u8(-1);
+                            mv.additionalId = u8(-1);
+
+                            ui->requestedMove = mv;
+                            ui->moveRequested = true;
+                        }
+
+                        // clear selection after confirming
+                        ui->selectedNode = -1;
+                        m_lastClickedNode = -1;
+                        m_lastClickTime = std::chrono::steady_clock::time_point::min();
                     }
                     else
                     {
-                        // Regular pick
-                        sevenWD::Move mv;
-                        mv.playableCard = u8(playableIdx);
-                        mv.action = sevenWD::Move::Action::Pick;
-                        mv.wonderIndex = u8(-1);
-                        mv.additionalId = u8(-1);
-
-                        ui->requestedMove = mv;
-                        ui->moveRequested = true;
+                        // first click -> select node (highlight in red)
+                        ui->selectedNode = int(nodeIndex);
+                        m_lastClickedNode = int(nodeIndex);
+                        m_lastClickTime = now;
                     }
                 }
-                else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx)
+                // allow burning on right-click if not selecting
+                else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx && ui->selectedWonder == -1)
                 {
-                    if (ui->selectedWonder >= 0)
-                    {
-                        // Right click cancels wonder selection
-                        ui->selectedWonder = -1;
-                    }
-                    else
-                    {
-                        // Burn
-                        sevenWD::Move mv;
-                        mv.playableCard = u8(playableIdx);
-                        mv.action = sevenWD::Move::Action::Burn;
-                        mv.wonderIndex = u8(-1);
-                        mv.additionalId = u8(-1);
+                    sevenWD::Move mv;
+                    mv.playableCard = u8(playableIdx);
+                    mv.action = sevenWD::Move::Action::Burn;
+                    mv.wonderIndex = u8(-1);
+                    mv.additionalId = u8(-1);
 
-                        ui->requestedMove = mv;
-                        ui->moveRequested = true;
-                    }
+                    ui->requestedMove = mv;
+                    ui->moveRequested = true;
                 }
             }
         }
@@ -774,4 +802,58 @@ void SevenWDuelRenderer::drawMilitaryTrack()
             m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
         }
     }
+}
+
+// ---------------------------------------------------------------------
+// Draw the currently selected node's magnified view + cost (if any)
+void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
+{
+    if (!ui || ui->selectedNode < 0)
+        return;
+
+    u32 nodeIndex = u32(ui->selectedNode);
+    if (nodeIndex >= m_state.m_graph.size()) return;
+
+    const auto& node = m_state.m_graph[nodeIndex];
+    if (!node.m_visible) return;
+
+    const sevenWD::Card& card = m_state.m_context->getCard(node.m_cardId);
+
+    // check if card already played (then nothing to show)
+    bool played = false;
+    for (u32 i = 0; i < m_state.m_numPlayedAgeCards; ++i)
+        if (m_state.m_playedAgeCards[i] == card.getAgeId()) { played = true; break; }
+    if (played) return;
+
+    // compute cost for current player to pick that card
+    u32 cur = m_state.getCurrentPlayerTurn();
+    const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(cur);
+    const sevenWD::PlayerCity& other = m_state.getPlayerCity((cur + 1) % 2);
+    u32 cost = myCity.computeCost(card, other);
+
+    // magnified area from UIPosition
+    float mx = m_uiPos.magnifiedX;
+    float my = m_uiPos.magnifiedY;
+    float mw = m_uiPos.magnifiedW;
+    float mh = m_uiPos.magnifiedH;
+
+    // enlarge background to leave more space for cost text above the card
+    const float topPad = 36.0f;   // extra space above card for the cost text
+    const float sidePad = 8.0f;
+    const float bottomPad = 16.0f;
+    m_renderer->DrawImage(GetBackgroundPanel(), mx - sidePad, my - topPad - sidePad, mw + sidePad * 2.0f, mh + topPad + bottomPad + sidePad);
+
+    // draw cost text further above magnified card to avoid overlap
+    std::string costText = std::string("Cost: ") + std::to_string(int(cost));
+    m_renderer->DrawText(costText, mx + 8.0f, my - topPad + 8.0f, Colors::Yellow);
+
+    // draw the card magnified (no extra highlight/outline)
+    SDL_Texture* tex = GetCardImage(card);
+    if (tex)
+        m_renderer->DrawImage(tex, mx, my, mw, mh);
+    else
+        m_renderer->DrawText("[no image]", mx + 8.0f, my + 8.0f, Colors::White);
+
+    // outline magnified card
+    m_renderer->DrawRect(mx - 4.0f, my - 4.0f, mw + 8.0f, mh + 8.0f, Colors::Cyan);
 }
