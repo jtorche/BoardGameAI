@@ -2,6 +2,8 @@
 #include <SDL3_image/SDL_image.h>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <random>
 
 #include "7WDuelRenderer.h"
 #include "7WDuel/GameController.h"
@@ -66,6 +68,44 @@ int main(int argc, char** argv)
         return gameController.m_state == S::WinPlayer0 || gameController.m_state == S::WinPlayer1;
     };
 
+    // ---------------------------
+    // History / backtrack support
+    // ---------------------------
+    struct Snapshot
+    {
+        sevenWD::GameState state;
+        sevenWD::GameController::State controllerState;
+        sevenWD::WinType winType;
+    };
+
+    std::vector<Snapshot> history;
+    size_t historyIndex = 0;
+
+    // Save initial state
+    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
+    historyIndex = 0;
+
+    // Helper to restore a snapshot and reset transient UI
+    auto restoreSnapshot = [&](size_t idx)
+    {
+        if (idx >= history.size())
+            return;
+
+        gameController.m_gameState = history[idx].state;
+        gameController.m_state = history[idx].controllerState;
+        gameController.m_winType = history[idx].winType;
+
+        // Reset transient UI state to avoid accidental double-actions
+        uiState.moveRequested = false;
+        uiState.leftClick = false;
+        uiState.rightClick = false;
+        uiState.hoveredNode = -1;
+        uiState.hoveredPlayableIndex = -1;
+        uiState.hoveredWonder = -1;
+        uiState.selectedWonder = -1;
+        uiState.requestedMove = sevenWD::Move{};
+    };
+
     // -----------------------------------------------------------
     // MAIN LOOP
     // -----------------------------------------------------------
@@ -91,10 +131,10 @@ int main(int argc, char** argv)
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 running = false;
 
-            // Left arrow: play a random legal move (only while game active)
+            // Key down: random move (space) OR history navigation (left/right)
             if (e.type == SDL_EVENT_KEY_DOWN)
             {
-                if (e.key.key == SDLK_LEFT)
+                if (e.key.key == SDLK_SPACE)
                 {
                     if (isGameOver())
                     {
@@ -118,11 +158,37 @@ int main(int argc, char** argv)
                             bool ended = gameController.play(chosen);
                             if (ended)
                                 std::cout << "Game ended after this move.\n";
+
+                            // Truncate forward history if we rewound before playing new move
+                            if (historyIndex + 1 < history.size())
+                                history.resize(historyIndex + 1);
+
+                            // Save resulting state to history and advance index
+                            history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
+                            historyIndex = history.size() - 1;
                         }
                         else
                         {
                             std::cout << "No legal moves to play\n";
                         }
+                    }
+                }
+                else if (e.key.key == SDLK_LEFT)
+                {
+                    // Rewind one state
+                    if (historyIndex > 0)
+                    {
+                        historyIndex--;
+                        restoreSnapshot(historyIndex);
+                    }
+                }
+                else if (e.key.key == SDLK_RIGHT)
+                {
+                    // Restore next state (if available)
+                    if (historyIndex + 1 < history.size())
+                    {
+                        historyIndex++;
+                        restoreSnapshot(historyIndex);
                     }
                 }
             }
@@ -199,6 +265,17 @@ int main(int argc, char** argv)
                 {
                     bool end = gameController.play(uiState.requestedMove);
                     (void)end;
+
+                    // Truncate forward history if we rewound before playing new move
+                    if (historyIndex + 1 < history.size())
+                        history.resize(historyIndex + 1);
+
+                    // Save resulting state to history and advance index
+                    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType });
+                    historyIndex = history.size() - 1;
+
+                    // After a move is played, reset transient UI selection
+                    uiState.selectedWonder = -1;
                 }
                 else
                 {
