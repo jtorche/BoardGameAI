@@ -48,6 +48,7 @@ public:
         int hoveredNode = -1;           // node index in the graph the mouse is over
         int hoveredPlayableIndex = -1;  // playable index (index into m_playableCards) if hovered
         int hoveredWonder = -1;         // wonder index in current player's unbuilt wonders
+        int hoveredScienceToken = -1;   // index of hovered science token on the science token area
 
         // When user clicked a wonder to build, this becomes the wonder index
         // (index into PlayerCity::m_unbuildWonders). If >=0 the renderer will
@@ -134,7 +135,7 @@ private:
     void drawPlayers(UIState* ui);
     void drawPlayerPanel(int player, float x, float y, UIState* ui);
     void drawMilitaryTrack();
-    void drawScienceTokens();
+    void drawScienceTokens(UIState* ui);
 
     // Graph layout helpers
     int findGraphRow(u32 nodeIndex) const;

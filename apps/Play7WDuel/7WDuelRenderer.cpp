@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <cctype> // added for sanitizing card names
 
 // keep previous constructor
 SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, RendererInterface* renderer)
@@ -21,6 +22,7 @@ void SevenWDuelRenderer::draw(UIState* ui)
         ui->hoveredNode = -1;
         ui->hoveredPlayableIndex = -1;
         ui->hoveredWonder = -1;
+        ui->hoveredScienceToken = -1;
         ui->moveRequested = false;
     }
 
@@ -73,7 +75,7 @@ void SevenWDuelRenderer::draw(UIState* ui)
 
     drawPlayers(ui);
     drawMilitaryTrack();
-    drawScienceTokens();
+    drawScienceTokens(ui);
     drawCardGraph(ui);
 }
 
@@ -358,7 +360,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
 }
 
 // ---------------------------------------------------------------------
-void SevenWDuelRenderer::drawScienceTokens()
+void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
 {
     float x = m_uiPos.scienceTokensX;
     float y = m_uiPos.scienceTokensY;
@@ -367,85 +369,54 @@ void SevenWDuelRenderer::drawScienceTokens()
     float textY = y - (m_layout.tokenH * 0.5f) - 12.0f;
     m_renderer->DrawText("Science Tokens", x, textY, Colors::Green);
 
-    for (int i = 0; i < m_state.m_numScienceToken; ++i)
+    // reset hovered science token each frame
+    if (ui)
+        ui->hoveredScienceToken = -1;
 
+    const sevenWD::GameController* gc = ui ? ui->gameController : nullptr;
+
+    for (int i = 0; i < m_state.m_numScienceToken; ++i)
     {
         const sevenWD::Card& card = m_state.getPlayableScienceToken(i);
         sevenWD::ScienceToken type = (sevenWD::ScienceToken)card.getSecondaryType();
 
+        float tx = x + i * (m_layout.tokenW + 10.0f);
+        float tw = m_layout.tokenW;
+        float th = m_layout.tokenH;
+
+        // draw token image
         m_renderer->DrawImage(
             GetScienceTokenImage(type),
-            x + i * (m_layout.tokenW + 10),
+            tx,
             y,
-            m_layout.tokenW,
-            m_layout.tokenH
+            tw,
+            th
         );
 
-    }
-}
+        // interactive handling: hover + pick when controller asks for token selection
+        if (ui)
+        {
+            if (ui->mouseX >= int(tx) && ui->mouseX < int(tx + tw) &&
+                ui->mouseY >= int(y) && ui->mouseY < int(y + th))
+            {
+                ui->hoveredScienceToken = i;
+                // highlight hovered token
+                m_renderer->DrawRect(tx - 4.0f, y - 4.0f, tw + 8.0f, th + 8.0f, Colors::Yellow);
 
-// ---------------------------------------------------------------------
-void SevenWDuelRenderer::drawMilitaryTrack()
-{
-    float x0 = m_uiPos.militaryTrackX0;
-    float y = m_uiPos.militaryTrackY;
-    float x1 = x0 + m_layout.militaryTrackLength;
+                // If the controller is in a token-picking state (or app wants token picking)
+                // allow left click to request a ScienceToken move.
+                if (ui->leftClick)
+                {
+                    sevenWD::Move mv;
+                    mv.playableCard = u8(i); // token index on the board
+                    mv.action = sevenWD::Move::Action::ScienceToken;
+                    mv.wonderIndex = u8(-1);
+                    mv.additionalId = u8(-1);
 
-    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
-    m_renderer->DrawLine(x0, y + 15, x1, y + 15, Colors::Red);
-
-    // Show numeric military score next to the label
-    int pos = m_state.getMilitary();   // -9 → +9
-    m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
-
-    float t = (pos + 9) / 18.0f;
-    float markerX = x0 + t * m_layout.militaryTrackLength;
-
-    m_renderer->DrawImage(
-        GetMilitaryMarkerImage(),
-        markerX - 15, y,
-        30, 30
-    );
-
-    // Draw three token slots per player at thresholds 1,3,6.
-    const int thresholds[3] = { 1, 3, 6 };
-    SDL_Renderer* rdr = m_renderer->GetSDLRenderer();
-    if (!rdr) return;
-
-    const int radius = 8;
-    // Colors: filled = available (white), outlined = taken (yellow)
-    SDL_Color fillColor{ 255, 255, 255, 255 };
-    SDL_Color outlineColor{ 255, 215, 0, 255 }; // gold-ish for taken
-
-    // Player 0 tokens (positive side)
-    for (int i = 0; i < 3; ++i)
-    {
-        int threshold = thresholds[i];
-        float tx = x0 + (threshold + 9) / 18.0f * m_layout.militaryTrackLength;
-        int cx = int(tx);
-        int cy = int(y + 15);
-
-        bool taken = pos >= threshold;
-        if (taken) {
-            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
-        } else {
-            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
-        }
-    }
-
-    // Player 1 tokens (negative side)
-    for (int i = 0; i < 3; ++i)
-    {
-        int threshold = thresholds[i];
-        float tx = x0 + ((-threshold) + 9) / 18.0f * m_layout.militaryTrackLength;
-        int cx = int(tx);
-        int cy = int(y + 15);
-
-        bool taken = pos <= -threshold;
-        if (taken) {
-            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
-        } else {
-            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
+                    ui->requestedMove = mv;
+                    ui->moveRequested = true;
+                }
+            }
         }
     }
 }
@@ -652,7 +623,33 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
 // Image loaders (existants)
 SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
 {
-    return m_renderer->LoadImage("assets/cards/card.png");
+    const char* cname = card.getName();
+    if (!cname || cname[0] == '\0')
+        return m_renderer->LoadImage("assets/cards/card.png");
+
+    // Build a filesystem-safe name from the card name:
+    // - keep alnum and a few safe punctuation characters
+    // - convert whitespace to underscore
+    std::string name(cname);
+    std::string safe;
+    safe.reserve(name.size());
+    for (unsigned char ch : name)
+    {
+        if (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '(' || ch == ')')
+            safe.push_back(char(ch));
+        else if (std::isspace(ch))
+            safe.push_back('_');
+        // skip other characters (apostrophes, punctuation, etc.)
+    }
+
+    std::string path = std::string("assets/cards/") + safe + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+
+    // Fallback to generic card image if specific file not found
+    if (!tex)
+        tex = m_renderer->LoadImage("assets/cards/card.png");
+
+    return tex;
 }
 
 SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
@@ -704,4 +701,70 @@ SDL_Texture* SevenWDuelRenderer::GetWeakNormalImage()
 SDL_Texture* SevenWDuelRenderer::GetWeakRareImage()
 {
     return m_renderer->LoadImage("assets/resources/weak_rare.png");
+}
+
+// ---------------------------------------------------------------------
+void SevenWDuelRenderer::drawMilitaryTrack()
+{
+    float x0 = m_uiPos.militaryTrackX0;
+    float y = m_uiPos.militaryTrackY;
+    float x1 = x0 + m_layout.militaryTrackLength;
+
+    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
+    m_renderer->DrawLine(x0, y + 15, x1, y + 15, Colors::Red);
+
+    // Show numeric military score next to the label
+    int pos = m_state.getMilitary();   // -9 → +9
+    m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
+
+    float t = (pos + 9) / 18.0f;
+    float markerX = x0 + t * m_layout.militaryTrackLength;
+
+    m_renderer->DrawImage(
+        GetMilitaryMarkerImage(),
+        markerX - 15, y,
+        30, 30
+    );
+
+    // Draw three token slots per player at thresholds 1,3,6.
+    const int thresholds[3] = { 1, 3, 6 };
+    SDL_Renderer* rdr = m_renderer->GetSDLRenderer();
+    if (!rdr) return;
+
+    const int radius = 8;
+    // Colors: filled = available (white), outlined = taken (yellow)
+    SDL_Color fillColor{ 255, 255, 255, 255 };
+    SDL_Color outlineColor{ 255, 215, 0, 255 }; // gold-ish for taken
+
+    // Player 0 tokens (positive side)
+    for (int i = 0; i < 3; ++i)
+    {
+        int threshold = thresholds[i];
+        float tx = x0 + (threshold + 9) / 18.0f * m_layout.militaryTrackLength;
+        int cx = int(tx);
+        int cy = int(y + 15);
+
+        bool taken = pos >= threshold;
+        if (taken) {
+            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        } else {
+            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
+        }
+    }
+
+    // Player 1 tokens (negative side)
+    for (int i = 0; i < 3; ++i)
+    {
+        int threshold = thresholds[i];
+        float tx = x0 + ((-threshold) + 9) / 18.0f * m_layout.militaryTrackLength;
+        int cx = int(tx);
+        int cy = int(y + 15);
+
+        bool taken = pos <= -threshold;
+        if (taken) {
+            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        } else {
+            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
+        }
+    }
 }
