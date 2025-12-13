@@ -32,6 +32,9 @@ public:
     //  - If the renderer detects a user action it sets `moveRequested` to true
     //    and fills `requestedMove`. The application should consume that move and
     //    then call GameController::play(...) or otherwise handle it.
+    // NOTE: UIState is now passed as a pointer. If `ui` is nullptr the renderer
+    // will only display the current game state and will not read or write any
+    // interactive fields (no hover/click handling).
     struct UIState
     {
         int mouseX = 0;
@@ -112,15 +115,17 @@ public:
     // =============================================================
     //                          DRAW ENTRY
     // =============================================================
-    // NOTE: UIState is passed by reference so the renderer reads mouse events
-    // and writes hover/selection information and (if a move was chosen)
-    // populates UIState::requestedMove + sets UIState::moveRequested = true.
-    void draw(UIState& ui);
+    // NOTE: UIState is passed as a pointer so the renderer may be invoked in
+    // a read-only display mode by passing nullptr. When `ui` is non-null the
+    // renderer will read mouse events and write hover/selection information
+    // and (if a move was chosen) populates UIState::requestedMove + sets
+    // UIState::moveRequested = true.
+    void draw(UIState* ui);
 
 private:
     void drawBackground();
-    void drawPlayers(UIState& ui);
-    void drawPlayerPanel(int player, float x, float y, UIState& ui);
+    void drawPlayers(UIState* ui);
+    void drawPlayerPanel(int player, float x, float y, UIState* ui);
     void drawMilitaryTrack();
     void drawScienceTokens();
 
@@ -129,7 +134,7 @@ private:
     int findGraphColumn(u32 nodeIndex) const;
 
     // Draw the card graph (pyramid) and update UI hover/click via UIState
-    void drawCardGraph(UIState& ui);
+    void drawCardGraph(UIState* ui);
 
     SDL_Texture* GetCardImage(const sevenWD::Card& card);
     SDL_Texture* GetCardBackImage();

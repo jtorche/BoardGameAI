@@ -11,14 +11,18 @@ SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, Renderer
 {
 }
 
-// Updated entry point: consumes UIState and updates it (hover, selection, requestedMove)
-void SevenWDuelRenderer::draw(UIState& ui)
+// Updated entry point: consumes UIState pointer and updates it (hover, selection, requestedMove)
+// If ui == nullptr the renderer runs in read-only display mode (no interactions).
+void SevenWDuelRenderer::draw(UIState* ui)
 {
-    // reset hover each frame
-    ui.hoveredNode = -1;
-    ui.hoveredPlayableIndex = -1;
-    ui.hoveredWonder = -1;
-    ui.moveRequested = false;
+    // If interactive UIState provided, reset transient hover fields each frame
+    if (ui)
+    {
+        ui->hoveredNode = -1;
+        ui->hoveredPlayableIndex = -1;
+        ui->hoveredWonder = -1;
+        ui->moveRequested = false;
+    }
 
     drawBackground();
     drawPlayers(ui);
@@ -34,13 +38,13 @@ void SevenWDuelRenderer::drawBackground()
 }
 
 // ---------------------------------------------------------------------
-void SevenWDuelRenderer::drawPlayers(UIState& ui)
+void SevenWDuelRenderer::drawPlayers(UIState* ui)
 {
     drawPlayerPanel(0, m_uiPos.playerPanelX0, m_uiPos.playerPanelY, ui);
     drawPlayerPanel(1, m_uiPos.playerPanelX1, m_uiPos.playerPanelY, ui);
 }
 
-void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState& ui)
+void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* ui)
 {
     const sevenWD::PlayerCity& city = m_state.getPlayerCity(player);
 
@@ -247,35 +251,35 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState& 
                 SDL_Texture* tex = GetWonderImage(wonder);
                 m_renderer->DrawImage(GetWonderImage(wonder), wx, imgY, drawW, drawH);
 
-                // Hit detection: if mouse is over this wonder record that in UIState
-                if (ui.mouseX >= int(wx) && ui.mouseX < int(wx + drawW) &&
-                    ui.mouseY >= int(imgY) && ui.mouseY < int(imgY + drawH))
+                // Hit detection: if mouse is over this wonder record that in UIState (only if ui provided)
+                if (ui && ui->mouseX >= int(wx) && ui->mouseX < int(wx + drawW) &&
+                    ui->mouseY >= int(imgY) && ui->mouseY < int(imgY + drawH))
                 {
-                    ui.hoveredWonder = w;
+                    ui->hoveredWonder = w;
                 }
 
                 // If user clicked the wonder -> toggle selection (only if it's the current player's panel)
                 // We set selection only for the current player (m_state.getCurrentPlayerTurn())
-                if (player == (int)m_state.getCurrentPlayerTurn())
+                if (player == (int)m_state.getCurrentPlayerTurn() && ui)
                 {
-                    if (ui.leftClick && ui.hoveredWonder == w)
+                    if (ui->leftClick && ui->hoveredWonder == w)
                     {
                         // toggle selection
-                        if (ui.selectedWonder == w)
-                            ui.selectedWonder = -1;
+                        if (ui->selectedWonder == w)
+                            ui->selectedWonder = -1;
                         else
-                            ui.selectedWonder = w;
+                            ui->selectedWonder = w;
                     }
 
                     // Right click cancels selection
-                    if (ui.rightClick && ui.selectedWonder != -1)
+                    if (ui->rightClick && ui->selectedWonder != -1)
                     {
-                        ui.selectedWonder = -1;
+                        ui->selectedWonder = -1;
                     }
                 }
 
-                // If this wonder is selected draw an outline
-                if (ui.selectedWonder == w && player == (int)m_state.getCurrentPlayerTurn())
+                // If this wonder is selected draw an outline (only highlight visually; selection is stored in UIState if interactive)
+                if (ui && ui->selectedWonder == w && player == (int)m_state.getCurrentPlayerTurn())
                 {
                     m_renderer->DrawRect(wx - 4.0f, imgY - 4.0f, drawW + 8.0f, drawH + 8.0f, Colors::Green);
                 }
@@ -436,7 +440,7 @@ int SevenWDuelRenderer::findGraphColumn(u32 nodeIndex) const
 }
 
 // Draw the card graph (pyramid) and update UIState for hover/click.
-void SevenWDuelRenderer::drawCardGraph(UIState& ui)
+void SevenWDuelRenderer::drawCardGraph(UIState* ui)
 {
     const float baseX = m_uiPos.pyramidBaseX;
     const float baseY = m_uiPos.pyramidBaseY;
@@ -494,13 +498,13 @@ void SevenWDuelRenderer::drawCardGraph(UIState& ui)
         const float rw = m_layout.cardW;
         const float rh = m_layout.cardH;
 
-        // Hover detection: store node index and playable index in UIState if mouse is over rect
-        if (ui.mouseX >= int(rx) && ui.mouseX < int(rx + rw) &&
-            ui.mouseY >= int(ry) && ui.mouseY < int(ry + rh))
+        // Hover detection: store node index and playable index in UIState if mouse is over rect (only if ui provided)
+        if (ui && ui->mouseX >= int(rx) && ui->mouseX < int(rx + rw) &&
+            ui->mouseY >= int(ry) && ui->mouseY < int(ry + rh))
         {
-            ui.hoveredNode = int(nodeIndex);
+            ui->hoveredNode = int(nodeIndex);
             int pidx = playableIndexOfNode[nodeIndex];
-            ui.hoveredPlayableIndex = pidx;
+            ui->hoveredPlayableIndex = pidx;
         }
 
         // Visible node: real card (unless it's been played -> skip)
@@ -528,7 +532,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState& ui)
             }
 
             // If user has selected a wonder (waiting for a card to use), highlight playable slots
-            if (ui.selectedWonder >= 0 && isPlayable && m_state.getCurrentPlayerTurn() == 0 /* selected wonder only valid for current player - renderer cannot modify game turn, but we highlight anyway */)
+            if (ui && ui->selectedWonder >= 0 && isPlayable && m_state.getCurrentPlayerTurn() == 0 /* selected wonder only valid for current player - renderer cannot modify game turn, but we highlight anyway */)
             {
                 // draw subtle green hint
                 m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
@@ -536,24 +540,24 @@ void SevenWDuelRenderer::drawCardGraph(UIState& ui)
 
             m_renderer->DrawImage(texture, x, y, m_layout.cardW, m_layout.cardH);
 
-            // If the mouse is hovering over this playable card and a click occurred, set requested move in UIState
+            // If the mouse is hovering over this playable card and a click occurred, set requested move in UIState (only if ui provided)
             int playableIdx = playableIndexOfNode[nodeIndex];
-            if (playableIdx != -1)
+            if (playableIdx != -1 && ui)
             {
-                if (ui.leftClick && ui.hoveredPlayableIndex == playableIdx)
+                if (ui->leftClick && ui->hoveredPlayableIndex == playableIdx)
                 {
-                    if (ui.selectedWonder >= 0)
+                    if (ui->selectedWonder >= 0)
                     {
                         // Build wonder using this playable card
                         sevenWD::Move mv;
                         mv.playableCard = u8(playableIdx);
                         mv.action = sevenWD::Move::Action::BuildWonder;
-                        mv.wonderIndex = u8(ui.selectedWonder);
+                        mv.wonderIndex = u8(ui->selectedWonder);
                         mv.additionalId = u8(-1);
 
-                        ui.requestedMove = mv;
-                        ui.moveRequested = true;
-                        ui.selectedWonder = -1; // clear selection after issuing move
+                        ui->requestedMove = mv;
+                        ui->moveRequested = true;
+                        ui->selectedWonder = -1; // clear selection after issuing move
                     }
                     else
                     {
@@ -564,16 +568,16 @@ void SevenWDuelRenderer::drawCardGraph(UIState& ui)
                         mv.wonderIndex = u8(-1);
                         mv.additionalId = u8(-1);
 
-                        ui.requestedMove = mv;
-                        ui.moveRequested = true;
+                        ui->requestedMove = mv;
+                        ui->moveRequested = true;
                     }
                 }
-                else if (ui.rightClick && ui.hoveredPlayableIndex == playableIdx)
+                else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx)
                 {
-                    if (ui.selectedWonder >= 0)
+                    if (ui->selectedWonder >= 0)
                     {
                         // Right click cancels wonder selection
-                        ui.selectedWonder = -1;
+                        ui->selectedWonder = -1;
                     }
                     else
                     {
@@ -584,8 +588,8 @@ void SevenWDuelRenderer::drawCardGraph(UIState& ui)
                         mv.wonderIndex = u8(-1);
                         mv.additionalId = u8(-1);
 
-                        ui.requestedMove = mv;
-                        ui.moveRequested = true;
+                        ui->requestedMove = mv;
+                        ui->moveRequested = true;
                     }
                 }
             }

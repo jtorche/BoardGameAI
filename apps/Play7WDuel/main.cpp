@@ -141,7 +141,7 @@ int main(int argc, char** argv)
         SDL_RenderClear(renderer.GetSDLRenderer());
 
         // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
-        ui.draw(uiState);
+        ui.draw(&uiState);
 
         // If renderer requested a move, validate it against legal moves before executing.
         if (uiState.moveRequested)
