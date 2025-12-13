@@ -960,6 +960,25 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     int pos = m_state.getMilitary();   // -9 → +9
     m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
 
+    // Draw graduation ticks for each step (-9..+9)
+    const int stepCount = 19; // -9..+9 inclusive
+    const float trackY = y + 15.0f;
+    const float smallTickHalf = 4.0f;
+    const float largeTickHalf = 8.0f;
+    for (int s = 0; s < stepCount; ++s)
+    {
+        int value = s - 9;
+        float tx = x0 + (s / float(stepCount - 1)) * m_layout.militaryTrackLength;
+
+        // Major ticks at 3 and 6 (and their negatives)
+        bool isMajor = (abs(value) == 3 || abs(value) == 6 || value == 0);
+        float top = trackY - (isMajor ? largeTickHalf : smallTickHalf);
+        float bottom = trackY + (isMajor ? largeTickHalf : smallTickHalf);
+
+        // Major ticks use a brighter color
+        m_renderer->DrawLine(tx, top, tx, bottom, isMajor ? Colors::Yellow : Colors::White);
+    }
+
     float t = (pos + 9) / 18.0f;
     float markerX = x0 + t * m_layout.militaryTrackLength;
 
@@ -969,8 +988,8 @@ void SevenWDuelRenderer::drawMilitaryTrack()
         30, 30
     );
 
-    // Draw three token slots per player at thresholds 1,3,6.
-    const int thresholds[3] = { 1, 3, 6 };
+    // Draw two token slots per player at thresholds 3 and 6 (game uses only these).
+    const int thresholds[2] = { 3, 6 };
     SDL_Renderer* rdr = m_renderer->GetSDLRenderer();
     if (!rdr) return;
 
@@ -980,12 +999,12 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     SDL_Color outlineColor{ 255, 215, 0, 255 }; // gold-ish for taken
 
     // Player 0 tokens (positive side)
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 2; ++i)
     {
         int threshold = thresholds[i];
         float tx = x0 + (threshold + 9) / 18.0f * m_layout.militaryTrackLength;
         int cx = int(tx);
-        int cy = int(y + 15);
+        int cy = int(trackY);
 
         bool taken = pos >= threshold;
         if (taken) {
@@ -996,12 +1015,12 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     }
 
     // Player 1 tokens (negative side)
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 2; ++i)
     {
         int threshold = thresholds[i];
         float tx = x0 + ((-threshold) + 9) / 18.0f * m_layout.militaryTrackLength;
         int cx = int(tx);
-        int cy = int(y + 15);
+        int cy = int(trackY);
 
         bool taken = pos <= -threshold;
         if (taken) {
