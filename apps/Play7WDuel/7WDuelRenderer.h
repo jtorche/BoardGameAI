@@ -10,17 +10,17 @@ public:
     struct UIPosition
     {
         float playerPanelX0 = 50.0f; // Player 1 panel X position
-        float playerPanelY = 500.0f; // Player panel Y position
+        float playerPanelY = 510.0f; // Player panel Y position
         float playerPanelX1 = 1270.0f; // Player 2 panel X position
 
         float pyramidBaseX = 960.0f; // Screen center X for pyramid (adjustable)
-        float pyramidBaseY = 260.0f; // Y position of pyramid
+        float pyramidBaseY = 270.0f; // Y position of pyramid
 
         float militaryTrackX0 = 200.0f; // X position of military track start
-        float militaryTrackY = 40.0f;  // Y position of military track
+        float militaryTrackY = 60.0f;  // Y position of military track
 
         float scienceTokensX = 650.0f; // X position for science tokens
-        float scienceTokensY = 100.0f; // Y position for science tokens
+        float scienceTokensY = 120.0f; // Y position for science tokens
     };
 
     // UI state is stored outside the renderer. The application must fill mouse

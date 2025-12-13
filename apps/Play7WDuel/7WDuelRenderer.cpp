@@ -25,6 +25,14 @@ void SevenWDuelRenderer::draw(UIState* ui)
     }
 
     drawBackground();
+
+    // Draw current player turn in the top-left (always shown, interactive or read-only)
+    {
+        u32 cur = m_state.getCurrentPlayerTurn();
+        std::string turnText = "Current player: " + std::to_string(int(cur) + 1);
+        m_renderer->DrawText(turnText, 20.0f, 20.0f, Colors::White);
+    }
+
     drawPlayers(ui);
     drawMilitaryTrack();
     drawScienceTokens();
