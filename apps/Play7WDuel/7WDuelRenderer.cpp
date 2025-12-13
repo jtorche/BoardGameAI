@@ -843,6 +843,7 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
             if (widx >= 0 && widx < city.m_unbuildWonderCount)
             {
                 sevenWD::Wonders wonder = city.m_unbuildWonders[widx];
+                const sevenWD::Card& wonderCard = m_state.m_context->getWonder(wonder);
 
                 // magnified area from UIPosition
                 float mx = m_uiPos.magnifiedX;
@@ -855,6 +856,16 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                 const float sidePad = 8.0f;
                 const float bottomPad = 12.0f;
                 m_renderer->DrawImage(GetBackgroundPanel(), mx - sidePad, my - topPad - sidePad, mw + sidePad * 2.0f, mh + topPad + bottomPad + sidePad);
+
+                // compute cost for current player to build this wonder
+                u32 cur = m_state.getCurrentPlayerTurn();
+                const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(cur);
+                const sevenWD::PlayerCity& other = m_state.getPlayerCity((cur + 1) % 2);
+                u32 cost = myCity.computeCost(wonderCard, other);
+
+                // draw cost text above magnified wonder
+                std::string costText = std::string("Cost: ") + std::to_string(int(cost));
+                m_renderer->DrawText(costText, mx + 8.0f, my - topPad + 8.0f, Colors::Yellow);
 
                 // draw wonder image (use wonder-specific image loader)
                 SDL_Texture* wtex = GetWonderImage(wonder);
