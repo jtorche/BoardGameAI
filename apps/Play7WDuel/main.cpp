@@ -47,6 +47,14 @@ int main(int argc, char** argv)
     bool running = true;
     Uint64 last = SDL_GetTicks();
 
+    // UI state is owned by the application (transient clicks, mouse pos, etc.)
+    SevenWDuelRenderer::UIState uiState;
+    // Ensure initial mouse position is set
+    float mx, my;
+    SDL_GetMouseState(&mx, &my);
+    uiState.mouseX = static_cast<int>(mx + 0.5f);
+    uiState.mouseY = static_cast<int>(my + 0.5f);
+
     // -----------------------------------------------------------
     // MAIN LOOP
     // -----------------------------------------------------------
@@ -56,6 +64,11 @@ int main(int argc, char** argv)
         Uint64 now = SDL_GetTicks();
         float dt = (now - last) / 1000.0f;
         last = now;
+
+        // Reset transient click flags at start of frame
+        uiState.leftClick = false;
+        uiState.rightClick = false;
+        uiState.moveRequested = false; // renderer will set if user clicked a valid action
 
         // ---- events ----
         SDL_Event e;
@@ -70,7 +83,7 @@ int main(int argc, char** argv)
             // Left arrow: play a random legal move
             if (e.type == SDL_EVENT_KEY_DOWN)
             {
-                if (e.key.key == SDLK_LEFT)
+                if (e.key.key == SDLK_RIGHT)
                 {
                     std::vector<sevenWD::Move> moves;
                     gameController.enumerateMoves(moves);
@@ -94,7 +107,31 @@ int main(int argc, char** argv)
                     }
                 }
             }
+
+            // Mouse motion: update coordinates (SDL3 provides floats)
+            if (e.type == SDL_EVENT_MOUSE_MOTION)
+            {
+                uiState.mouseX = static_cast<int>(e.motion.x + 0.5f);
+                uiState.mouseY = static_cast<int>(e.motion.y + 0.5f);
+            }
+
+            // Button down: set transient click flags and update mouse coords
+            if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+            {
+                uiState.mouseX = static_cast<int>(e.button.x + 0.5f);
+                uiState.mouseY = static_cast<int>(e.button.y + 0.5f);
+
+                if (e.button.button == SDL_BUTTON_LEFT)
+                    uiState.leftClick = true;
+                else if (e.button.button == SDL_BUTTON_RIGHT)
+                    uiState.rightClick = true;
+            }
         }
+
+        // Keep mouse position accurate even if no events were processed this frame
+        SDL_GetMouseState(&mx, &my);
+        uiState.mouseX = static_cast<int>(mx + 0.5f);
+        uiState.mouseY = static_cast<int>(my + 0.5f);
 
         // ---- update ----
         // game.update(dt); (if you want)
@@ -103,7 +140,23 @@ int main(int argc, char** argv)
         SDL_SetRenderDrawColor(renderer.GetSDLRenderer(), 0, 0, 0, 255);
         SDL_RenderClear(renderer.GetSDLRenderer());
 
-        ui.draw();
+        // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
+        ui.draw(uiState);
+
+        // If renderer requested a move, execute it here (app is responsible for mutating game state)
+        if (uiState.moveRequested)
+        {
+            // Execute the requested move through the game controller.
+            bool end = gameController.play(uiState.requestedMove);
+            (void)end; // caller may inspect controller.m_state if needed
+
+            // Consume the requested move so it won't be processed again
+            uiState.moveRequested = false;
+
+            // Clear transient clicks to avoid double-processing in same frame
+            uiState.leftClick = false;
+            uiState.rightClick = false;
+        }
 
         SDL_RenderPresent(renderer.GetSDLRenderer());
     }
