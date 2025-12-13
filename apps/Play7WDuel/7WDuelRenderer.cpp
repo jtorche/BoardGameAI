@@ -167,6 +167,13 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
             float imgY = curY + (baseRowH - iconH) * 0.5f;
             m_renderer->DrawImage(tex, rx, imgY, iconW, iconH);
 
+            // highlight resource icon if the player has a discount for this resource
+            // (draw a yellow outline around the icon)
+            if (city.m_resourceDiscount[r])
+            {
+                m_renderer->DrawRect(rx - 3.0f, imgY - 3.0f, iconW + 6.0f, iconH + 6.0f, Colors::Yellow);
+            }
+
             // primary production value
             int prodVal = city.m_production[r];
 
