@@ -4,9 +4,13 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <memory>
 
 #include "7WDuelRenderer.h"
 #include "7WDuel/GameController.h"
+#include "AI/AI.h"
+#include "AI/ML.h"
+#include "AI/MCTS.h"
 
 SDL_Window* gWindow = nullptr;
 
@@ -35,6 +39,38 @@ int main(int argc, char** argv)
     }
 
     // -----------------------------------------------------------
+    // AI: try to load MCTS_Simple; fall back to RandAI if loading fails
+    // -----------------------------------------------------------
+    MCTS_Simple* rawLoadedAI = nullptr;
+    unsigned int loadedGen = 0;
+    std::tie(rawLoadedAI, loadedGen) = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
+
+    // take ownership if load succeeded; unique_ptr accepts nullptr too
+    std::unique_ptr<MCTS_Simple> ownedAI(rawLoadedAI);
+
+    // keep a stack RandAI for fallback
+    sevenWD::RandAI randAi;
+
+    // activeAI will point to either the loaded AI (ownedAI.get()) or the fallback randAi
+    sevenWD::AIInterface* activeAI = nullptr;
+    if (ownedAI)
+    {
+        // configure loaded AI
+        ownedAI->m_depth = 10;
+        ownedAI->m_numSimu = 50;
+        activeAI = ownedAI.get();
+        std::cout << "Loaded AI: " << activeAI->getName() << " (gen " << loadedGen << ")\n";
+    }
+    else
+    {
+        activeAI = &randAi;
+        std::cout << "Failed to load MCTS_Simple — using RandAI fallback\n";
+    }
+
+    // create per-thread context for the active AI (may be nullptr for simple AIs)
+    void* aiThreadCtx = activeAI->createPerThreadContext();
+
+    // -----------------------------------------------------------
     // GAME + UI RENDERER
     // -----------------------------------------------------------
     sevenWD::GameContext gameContext;
@@ -44,7 +80,7 @@ int main(int argc, char** argv)
     RendererInterface renderer(gWindow);
     SevenWDuelRenderer ui(gameController.m_gameState, &renderer);
 
-    // RNG for random move selection
+    // RNG for random move selection (still used for tie-breaking / other code)
     std::mt19937 rng(static_cast<uint32_t>(SDL_GetTicks()));
 
     bool running = true;
@@ -131,7 +167,7 @@ int main(int argc, char** argv)
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 running = false;
 
-            // Key down: random move (space) OR history navigation (left/right)
+            // Key down: AI move (space) OR history navigation (left/right)
             if (e.type == SDL_EVENT_KEY_DOWN)
             {
                 if (e.key.key == SDLK_SPACE)
@@ -146,12 +182,10 @@ int main(int argc, char** argv)
                         gameController.enumerateMoves(moves);
                         if (!moves.empty())
                         {
-                            // Choose a random move from the list returned by enumerateMoves.
-                            std::uniform_int_distribution<size_t> dist(0, moves.size() - 1);
-                            sevenWD::Move chosen = moves[dist(rng)]; // copy is fine
+                            // Use the active AI to pick the move
+                            sevenWD::Move chosen = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
 
-                            // enumerateMoves produced this move, so it's already legal for current state.
-                            std::cout << "Playing random move: ";
+                            std::cout << "AI (" << activeAI->getName() << ") playing move: ";
                             gameController.printMove(std::cout, chosen) << "\n";
 
                             // Execute move. play(...) returns true if the game ended as a result.
@@ -294,6 +328,9 @@ int main(int argc, char** argv)
 
         SDL_RenderPresent(renderer.GetSDLRenderer());
     }
+
+    // cleanup AI thread context (works for loaded AI or fallback RandAI)
+    activeAI->destroyPerThreadContext(aiThreadCtx);
 
     SDL_DestroyWindow(gWindow);
 
