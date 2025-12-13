@@ -847,13 +847,12 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
     std::string costText = std::string("Cost: ") + std::to_string(int(cost));
     m_renderer->DrawText(costText, mx + 8.0f, my - topPad + 8.0f, Colors::Yellow);
 
-    // draw the card magnified (no extra highlight/outline)
+    // draw the card magnified (no outline/highlight)
     SDL_Texture* tex = GetCardImage(card);
     if (tex)
         m_renderer->DrawImage(tex, mx, my, mw, mh);
     else
         m_renderer->DrawText("[no image]", mx + 8.0f, my + 8.0f, Colors::White);
 
-    // outline magnified card
-    m_renderer->DrawRect(mx - 4.0f, my - 4.0f, mw + 8.0f, mh + 8.0f, Colors::Cyan);
+    // Intentionally no outline or additional highlight for the magnified card.
 }
