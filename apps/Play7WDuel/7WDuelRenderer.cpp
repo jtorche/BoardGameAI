@@ -876,30 +876,43 @@ void SevenWDuelRenderer::drawWonderDraft(UIState* ui)
 	if (count == 0)
 		return;
 
-	const float cardW = m_layout.wonderW * 1.5f;
-	const float cardH = m_layout.wonderH * 1.5f;
-	const float spacing = 30.0f;
-	const float totalWidth = count * cardW + (count - 1) * spacing;
-	const float startX = m_uiPos.pyramidBaseX - totalWidth * 0.5f;
-	const float y = m_uiPos.pyramidBaseY - cardH * 0.5f;
+	// Arrange drafted wonders in a 2x2 grid (columns fixed to 2) so each card can be larger.
+	const int cols = 2;
+	const int rows = (count + cols - 1) / cols;
 
+	// Card scale and spacing come from UIPosition so the grid is adjustable at runtime.
+	const float cardW = m_layout.wonderW * m_uiPos.wonderDraftCardScale;
+	const float cardH = m_layout.wonderH * m_uiPos.wonderDraftCardScale;
+	const float spacing = m_uiPos.wonderDraftSpacing;
+
+	// Compute total grid size and top-left origin
+	const float totalWidth = cols * cardW + (cols - 1) * spacing;
+	const float totalHeight = rows * cardH + (rows - 1) * spacing;
+	const float startX = m_uiPos.wonderDraftBaseX - totalWidth * 0.5f;
+	const float startY = m_uiPos.wonderDraftBaseY - totalHeight * 0.5f;
+
+	// Title placed above the grid
 	std::string title = "Wonder Draft - Player " + std::to_string(m_state.getCurrentPlayerTurn() + 1);
-	m_renderer->DrawText(title, startX, y - cardH - 36.0f, Colors::Yellow);
+	m_renderer->DrawText(title, startX, startY - m_uiPos.wonderDraftTitleOffset, Colors::Yellow);
 	std::string round = "Round " + std::to_string(m_state.getCurrentWonderDraftRound() + 1) + "/2";
-	m_renderer->DrawText(round, startX, y - cardH - 12.0f, Colors::White);
+	m_renderer->DrawText(round, startX, startY - m_uiPos.wonderDraftRoundOffset, Colors::White);
 
 	const bool canRequestMove = ui && ui->gameController && ui->gameController->m_state == sevenWD::GameController::State::DraftWonder;
 
 	for (u8 i = 0; i < count; ++i)
 	{
-		float x = startX + i * (cardW + spacing);
+		int r = i / cols;
+		int c = i % cols;
+
+		float x = startX + c * (cardW + spacing);
+		float y = startY + r * (cardH + spacing);
 		SDL_Rect rect{ int(x), int(y), int(cardW), int(cardH) };
 
 		bool hovered = ui &&
 			ui->mouseX >= rect.x && ui->mouseX <= rect.x + rect.w &&
 			ui->mouseY >= rect.y && ui->mouseY <= rect.y + rect.h;
 
-		if (hovered)
+		if (hovered && ui)
 		{
 			ui->hoveredWonder = i;
 			m_renderer->DrawRect(x - 6.0f, y - 6.0f, cardW + 12.0f, cardH + 12.0f, Colors::Yellow);

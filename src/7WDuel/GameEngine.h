@@ -90,6 +90,7 @@ namespace sevenWD
 		const PlayerCity& getPlayerCity(u32 _player) const { return m_playerCity[_player]; };
 
 		std::array<ScienceToken, 5> getUnusedScienceToken() const;
+
 		bool isDraftingWonders() const { return m_isWonderDrafting; }
 		u8 getNumDraftableWonders() const;
 		Wonders getDraftableWonder(u32 _index) const;

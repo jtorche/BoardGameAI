@@ -32,16 +32,26 @@ public:
         float pyramidBaseX = 960.0f; // Screen center X for pyramid (adjustable)
         float pyramidBaseY = 260.0f; // Y position of pyramid
 
-        float militaryTrackX0 = 620.0f; // X position of military track start
+        float militaryTrackX0 = 720.0f; // X position of military track start
         float militaryTrackY = 40.0f;  // Y position of military track
 
-        float scienceTokensX = 820.0f; // X position for science tokens
+        float scienceTokensX = 920.0f; // X position for science tokens
         float scienceTokensY = 130.0f; // Y position for science tokens
         // region where a selected card is shown magnified (controlled by app)
         float magnifiedX = 1400.0f;
         float magnifiedY = 40.0f;
         float magnifiedW = 320.0f;
         float magnifiedH = 464.0f;
+
+        // --- Wonder draft specific positions (new) ---
+        // Allows independent placement/scaling of wonder draft UI without
+        // affecting the pyramid/graph layout.
+        float wonderDraftBaseX = 860.0f;         // center X for wonder draft row
+        float wonderDraftBaseY = 500.0f;         // center Y for wonder draft row
+        float wonderDraftCardScale = 3.0f;       // multiplier applied to layout.wonderW/H
+        float wonderDraftSpacing = 30.0f;        // spacing between draft cards
+        float wonderDraftTitleOffset = 60.0f;    // offset for title above cards
+        float wonderDraftRoundOffset = 40.0f;    // offset for round text above cards
     };
 
     // UI state is stored outside the renderer. The application must fill mouse
@@ -72,14 +82,14 @@ public:
         int hoveredWonderPlayer = -1;    // which player panel the hovered wonder belongs to
         int hoveredWonderIndex = -1;     // index inside that player's m_unbuildWonders
         int hoveredScienceToken = -1;   // index of hovered science token on the science token area
-        int hoveredWonder = -1;         // <-- Add this line to fix the error
+        int hoveredWonder = -1;
         int selectedNode = -1;          // node index selected by first click (requires double-click to confirm)
 
         // When user clicked a wonder to build we remember both owner and index.
         // This prevents ambiguous indices across both player panels.
         int selectedWonderPlayer = -1;  // player owning the selected wonder, -1 if none
         int selectedWonderIndex = -1;   // index inside that player's m_unbuildWonders, -1 if none
-        int selectedWonder = -1;        // Add this line to fix the error
+        int selectedWonder = -1;
 
         // If renderer detected a move selection it sets this and leaves it to
         // caller to execute and reset (moveRequested -> true -> caller executes move).
