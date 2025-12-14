@@ -306,6 +306,10 @@ namespace sevenWD
 		{
 			const Card& revivedCard = m_context->getCard(_additionalEffect);
 			getCurrentPlayerCity().addCard(revivedCard, otherPlayer);
+		} 
+		else if (pickedWonder == Wonders::GreatLibrary)
+		{
+			std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
 		}
 
 		DEBUG_ASSERT((m_playerCity[0].m_unbuildWonderCount + m_playerCity[1].m_unbuildWonderCount) > 0);
@@ -638,11 +642,11 @@ namespace sevenWD
 		}
 	}
  
- 	std::array<ScienceToken, 5> GameState::getUnusedScienceToken() const
+	std::array<ScienceToken, 3> GameState::getGreatLibraryDraft() const
  	{
- 		std::array<ScienceToken, 5> tokens;
-		for (u32 i = 5; i < u32(ScienceToken::Count); ++i)
-			tokens[i - 5] = m_scienceTokens[i];
+		std::array<ScienceToken, 3> tokens;
+		for (u32 i = 0; i < 3; ++i)
+			tokens[i] = m_scienceTokens[i + 5]; // Shuffle already done
 
 		return tokens;
 	}

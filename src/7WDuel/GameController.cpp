@@ -109,17 +109,12 @@ namespace sevenWD
 		}
 		else if (m_state == State::GreatLibraryToken || m_state == State::GreatLibraryTokenThenReplay)
 		{
-			auto unusedTokens = m_gameState.getUnusedScienceToken();
+			auto tokenDraft = m_gameState.getGreatLibraryDraft();
 			for (u8 i = 0; i < 3; ++i)
 			{
-				u32 numRemainingTokens = 5 - i;
-				u32 index = m_gameState.m_context->rand()() % numRemainingTokens;
-
 				Move move{ u8(-1), Move::Action::ScienceToken };
-				move.additionalId = m_gameState.m_context->getScienceToken(unusedTokens[index]).getId();
+				move.additionalId = m_gameState.m_context->getScienceToken(tokenDraft[i]).getId();
 				_moves.push_back(move);
-
-				std::swap(unusedTokens[index], unusedTokens[numRemainingTokens - 1]);
 			}
 		}
 		else
