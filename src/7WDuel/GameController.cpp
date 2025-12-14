@@ -141,10 +141,8 @@ namespace sevenWD
 
 		if (_move.action == Move::DraftWonder)
 		{
-			if (m_gameState.draftWonder(_move.playableCard))
-			{
-				m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
-			}
+			m_gameState.draftWonder(_move.playableCard);
+			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
 			return false;
 		}
 		else if (_move.action == Move::Pick)

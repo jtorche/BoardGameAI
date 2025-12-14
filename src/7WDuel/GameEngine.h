@@ -91,11 +91,11 @@ namespace sevenWD
 
 		std::array<ScienceToken, 5> getUnusedScienceToken() const;
 
-		bool isDraftingWonders() const { return m_isWonderDrafting; }
+		bool isDraftingWonders() const { return m_currentDraftRound < 2; }
+		u8 getCurrentWonderDraftRound() const { return m_currentDraftRound; }
 		u8 getNumDraftableWonders() const;
 		Wonders getDraftableWonder(u32 _index) const;
-		u8 getCurrentWonderDraftRound() const { return m_currentDraftRound; }
-		bool draftWonder(u32 _draftIndex);
+		void draftWonder(u32 _draftIndex);
 
 		SpecialAction pick(u32 _playableCardIndex);
 		void burn(u32 _playableCardIndex);
@@ -160,15 +160,10 @@ namespace sevenWD
 		bool militaryToken2[2] = { false,false };
 		bool militaryToken5[2] = { false,false };
 
-		bool m_isWonderDrafting = false;
+		// After shuffling, round N uses pool slice [N*4 .. N*4+3]
 		std::array<Wonders, u32(Wonders::Count)> m_wonderDraftPool;
-		u8 m_nextDraftWonderIndex = 0;
-		std::array<Wonders, 4> m_currentDraftWonders = {};
-		u8 m_numCurrentDraftWonders = 0;
-		u8 m_currentDraftRound = 0;
+		u8 m_currentDraftRound = 0; // 0 = first round, 1 = second round, 2 = finished
 		u8 m_picksInCurrentRound = 0;
-		// player who starts the current draft round (0 or 1)
-		u8 m_wonderDraftStarter = 0;
 
 	private:
 		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex);
@@ -184,7 +179,6 @@ namespace sevenWD
 		void initAge2Graph();
 		void initAge3Graph();
 		void initWonderDraft();
-		void refillDraftWonders();
 		void finishWonderDraft();
 		void pickCardAdnInitNode(CardNode& _node);
 

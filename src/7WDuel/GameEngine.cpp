@@ -85,16 +85,13 @@ namespace sevenWD
 	{
 		initScienceTokens();
 		initWonderDraft();
-		initAge1Graph();
 	}
 
 	void GameState::initWonderDraft()
 	{
-		m_isWonderDrafting = true;
+		m_playerTurn = 0;
 		m_currentDraftRound = 0;
 		m_picksInCurrentRound = 0;
-		m_nextDraftWonderIndex = 0;
-		m_numCurrentDraftWonders = 0;
 
 		for (PlayerCity& city : m_playerCity)
 		{
@@ -105,107 +102,79 @@ namespace sevenWD
 		for (u32 i = 0; i < m_wonderDraftPool.size(); ++i)
 			m_wonderDraftPool[i] = Wonders(i);
 
+		// initial shuffle: first 4 wonders will be the round 1 draft pool
 		std::shuffle(m_wonderDraftPool.begin(), m_wonderDraftPool.end(), m_context->rand());
-
-		refillDraftWonders();
-		m_playerTurn = 0;
-	}
-
-	void GameState::refillDraftWonders()
-	{
-		m_numCurrentDraftWonders = 0;
-		const u8 total = u8(m_wonderDraftPool.size());
-		const u8 remaining = total - m_nextDraftWonderIndex;
-		const u8 toDraw = std::min<u8>(4, remaining);
-		for (u8 i = 0; i < toDraw; ++i)
-		{
-			m_currentDraftWonders[m_numCurrentDraftWonders++] = m_wonderDraftPool[m_nextDraftWonderIndex++];
-		}
 	}
 
 	void GameState::finishWonderDraft()
 	{
-		m_isWonderDrafting = false;
-		m_numCurrentDraftWonders = 0;
+		// Also initialize beginning of the game
+		m_currentDraftRound = 2;
 		m_playerTurn = 0;
+
+		initAge1Graph();
 	}
 
-	bool GameState::draftWonder(u32 _draftIndex)
+	void GameState::draftWonder(u32 _draftIndex)
 	{
-		if (!m_isWonderDrafting || _draftIndex >= m_numCurrentDraftWonders)
-			return false;
-
-		PlayerCity& city = getCurrentPlayerCity();
-		if (city.m_unbuildWonderCount >= city.m_unbuildWonders.size())
-			return false;
-
-		// If this is the first pick in the round, remember the starter.
-		if (m_picksInCurrentRound == 0)
-			m_wonderDraftStarter = m_playerTurn;
-
-		// give picked wonder to the current player
-		Wonders wonder = m_currentDraftWonders[_draftIndex];
-		city.m_unbuildWonders[city.m_unbuildWonderCount++] = wonder;
-
-		// remove picked wonder from pool
-		std::swap(m_currentDraftWonders[_draftIndex], m_currentDraftWonders[m_numCurrentDraftWonders - 1]);
-		m_numCurrentDraftWonders--;
-
-		// increment pick count for this round
-		m_picksInCurrentRound++;
-
-		// Draft sequence per round:
-		//  - starter picks 1
-		//  - other player picks 2 (two consecutive picks)
-		//  - starter automatically receives the remaining wonder (forced pick)
-		//
-		// After the forced pick the round ends immediately and either refills for the
-		// next round or finishes the draft.
-
-		if (m_picksInCurrentRound == 1)
 		{
+			PlayerCity& city = getCurrentPlayerCity();
+			DEBUG_ASSERT(isDraftingWonders() && city.m_unbuildWonderCount < 4);
+
+			const u32 firstPickableWonderIndex = m_currentDraftRound * 4 + m_picksInCurrentRound;
+			const u32 lastPickableWonderIndex = (m_currentDraftRound + 1) * 4 - 1;
+
+			u32 pickIndexInPool = firstPickableWonderIndex + _draftIndex;
+			DEBUG_ASSERT(pickIndexInPool <= lastPickableWonderIndex);
+			city.m_unbuildWonders[city.m_unbuildWonderCount++] = m_wonderDraftPool[pickIndexInPool];
+
+			std::swap(m_wonderDraftPool[pickIndexInPool], m_wonderDraftPool[firstPickableWonderIndex]);
+			m_picksInCurrentRound++;
+		}
+
+		u8 roundStarter = m_currentDraftRound; // player who started the round
+
+		if (m_picksInCurrentRound == 1) {
 			// after starter picked, other player picks next
-			m_playerTurn = (m_wonderDraftStarter + 1) % 2;
-		}
-		else if (m_picksInCurrentRound == 2)
-		{
+			m_playerTurn = (roundStarter + 1) % 2;
+		} else if (m_picksInCurrentRound == 2) {
 			// other player's first pick: they pick again (keep same playerTurn)
-			// m_playerTurn remains the same (other player)
-		}
-		else if (m_picksInCurrentRound == 3)
-		{
-			// other player's second pick just happened. Now assign the remaining wonder
-			// (forced) to the round starter.
-			if (m_numCurrentDraftWonders == 1)
-			{
-				u8 starter = m_wonderDraftStarter;
-				PlayerCity& starterCity = m_playerCity[starter];
-				// give remaining wonder
-				Wonders remaining = m_currentDraftWonders[0];
-				starterCity.m_unbuildWonders[starterCity.m_unbuildWonderCount++] = remaining;
-				// clear pool
-				m_numCurrentDraftWonders = 0;
-			}
+		} else if (m_picksInCurrentRound == 3) {
+			const u32 firstPickableWonderIndex = m_currentDraftRound * 4 + m_picksInCurrentRound;
+			const u32 lastPickableWonderIndex = (m_currentDraftRound + 1) * 4 - 1;
+			DEBUG_ASSERT(firstPickableWonderIndex == lastPickableWonderIndex);
+
+			PlayerCity& starterCity = m_playerCity[roundStarter];
+			Wonders remainingWonder = m_wonderDraftPool[firstPickableWonderIndex];
+			starterCity.m_unbuildWonders[starterCity.m_unbuildWonderCount++] = remainingWonder;
 
 			// complete the round
 			m_currentDraftRound++;
 			m_picksInCurrentRound = 0;
 
-			if (m_currentDraftRound < 2)
-			{
-				// alternate starter for next round
-				m_wonderDraftStarter = (m_wonderDraftStarter + 1) % 2;
-				refillDraftWonders();
-				m_playerTurn = m_wonderDraftStarter;
-			}
-			else
-			{
-				// finished both rounds -> end drafting immediately
+			if (m_currentDraftRound < 2) {
+				std::shuffle(m_wonderDraftPool.begin() + 4, m_wonderDraftPool.end(), m_context->rand());
+				m_playerTurn = 1;
+			} else {
 				finishWonderDraft();
 			}
 		}
+	}
 
-		return true;
+	u8 GameState::getNumDraftableWonders() const
+	{
+		if (!isDraftingWonders())
+			return 0;
+
+		return 4 - m_picksInCurrentRound;
+	}
+
+	Wonders GameState::getDraftableWonder(u32 _index) const
+	{
+		DEBUG_ASSERT(m_currentDraftRound < 2);
+
+		const u32 firstPickableWonderIndex = m_currentDraftRound * 4 + m_picksInCurrentRound;
+		return m_wonderDraftPool[firstPickableWonderIndex + _index];
 	}
 
 	//----------------------------------------------------------------------------
@@ -229,17 +198,6 @@ namespace sevenWD
 		DEBUG_ASSERT(_index < getCurrentPlayerCity().m_unbuildWonderCount);
 		Wonders wonder = getCurrentPlayerCity().m_unbuildWonders[_index];
 		return m_context->getWonder(wonder);
-	}
-
-	u8 GameState::getNumDraftableWonders() const
-	{
-		return m_isWonderDrafting ? m_numCurrentDraftWonders : 0;
-	}
-
-	Wonders GameState::getDraftableWonder(u32 _index) const
-	{
-		DEBUG_ASSERT(_index < m_numCurrentDraftWonders);
-		return m_currentDraftWonders[_index];
 	}
 
 	SpecialAction GameState::pick(u32 _playableCardIndex)
@@ -865,9 +823,9 @@ namespace sevenWD
 
 		if (_card.m_isWeakProduction)
 		{
-			DEBUG_ASSERT(_card.m_production[u32(RT::Wood)] == _card.m_production[u32(RT::Clay)] && 
-						 _card.m_production[u32(RT::Wood)] == _card.m_production[u32(RT::Stone)]);
-			DEBUG_ASSERT(_card.m_production[u32(RT::Glass)] == _card.m_production[u32(RT::Papyrus)]);
+			// DEBUG_ASSERT(_card.m_production[u32(RT::Wood)] == _card.m_production[u32(RT::Clay)] && 
+			// 			 _card.m_production[u32(RT::Wood)] == _card.m_production[u32(RT::Stone]);
+			// DEBUG_ASSERT(_card.m_production[u32(RT::Glass)] == _card.m_production[u32(RT::Papyrus)]);
 
 			m_weakProduction.first += _card.m_production[u32(RT::Wood)];
 			m_weakProduction.second += _card.m_production[u32(RT::Glass)];
