@@ -281,45 +281,10 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
     }
     curY += baseRowH + spacing;
 
-    // Row 5: Owned Guilds - show one representative card for each owned guild-type
+    // Row 5: Owned Guilds — removed (not needed). Advance Y to keep consistent row spacing.
     {
-        m_renderer->DrawText("Guilds:", innerX + margin, curY, Colors::Yellow);
-        float gx = innerX + margin + 88.0f;
-        float maxX = innerX + innerW - margin;
-        const float guildW = std::min(m_layout.cardW * 0.8f, 48.0f);
-        const float guildH = guildW * (m_layout.cardH / m_layout.cardW);
-
-        if (m_state.m_context)
-        {
-            const auto& allGuilds = m_state.m_context->getAllGuildCards();
-            for (u8 type = 0; type < u8(sevenWD::CardType::Count); ++type)
-            {
-                if ((city.m_ownedGuildCards & (1u << type)) == 0) continue;
-
-                const sevenWD::Card* rep = nullptr;
-                for (const sevenWD::Card& c : allGuilds)
-                {
-                    if (c.getSecondaryType() == type)
-                    {
-                        rep = &c;
-                        break;
-                    }
-                }
-                if (!rep) continue;
-
-                if (gx + guildW > maxX) break;
-                float imgY = curY + (baseRowH - guildH) * 0.5f;
-                SDL_Texture* tex = GetCardImage(*rep);
-                if (tex)
-                    m_renderer->DrawImage(tex, gx, imgY, guildW, guildH);
-                else
-                    m_renderer->DrawText("G", gx, imgY, Colors::Yellow);
-
-                gx += guildW + 8.0f;
-            }
-        }
+        curY += baseRowH + spacing;
     }
-    curY += baseRowH + spacing;
 
     // Row 6: Wonders - use fixed desired size and wrap to multiple rows rather than shrinking to fit
     {
@@ -553,30 +518,200 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
         sevenWD::CardType::ScienceToken
     };
 
-    float y = panelY + 60.0f;
+    // Layout area inside panel
     const float innerX = panelX + 24.0f;
     const float innerWidth = panelW - 48.0f;
+    const float contentStartY = panelY + 60.0f;
+    const float contentAvailableH = panelH - (contentStartY - panelY) - 60.0f; // leave bottom margin
 
+    // Presentation constants (match previous values)
+    const float sectionTitleH = 28.0f;
+    const float sectionSpacingAfter = 20.0f;
+    const float defaultCardW = 88.0f;
+    const float minCardW = 60.0f; // allow some scaling if needed
+    const float columnGap = 24.0f;
+
+    // Build filtered lists per type preserving 'order'
+    struct TypeBlock { sevenWD::CardType type; std::vector<const sevenWD::Card*> cards; };
+    std::vector<TypeBlock> blocks;
+    blocks.reserve(order.size());
     for (auto type : order)
     {
-        std::vector<const sevenWD::Card*> filtered;
-        filtered.reserve(cards.size());
+        TypeBlock tb{ type, {} };
         for (const sevenWD::Card* card : cards)
+            if (card && card->getType() == type) tb.cards.push_back(card);
+        if (!tb.cards.empty()) blocks.push_back(std::move(tb));
+    }
+
+    // Helper lambdas: compute height (no draw) and draw a block using variable cardW
+    auto calcBlockHeight = [&](const std::vector<const sevenWD::Card*>& bcards, float maxWidth, float cardW) -> float
+    {
+        if (bcards.empty()) return 0.0f;
+        // replicate drawPlayerCityCardGrid sizing logic
+        const float spacing = 12.0f;
+        const float labelH = 0.0f;
+        float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+
+        int perRow = std::max(1, int((maxWidth + spacing) / (cardW + spacing)));
+        int rows = int((bcards.size() + perRow - 1) / perRow);
+        float rowHeight = cardH + spacing + labelH;
+        float used = std::max(0, rows) * rowHeight - spacing;
+        return sectionTitleH + used + sectionSpacingAfter;
+    };
+
+    auto drawBlock = [&](const std::vector<const sevenWD::Card*>& bcards, float startX, float& yRef, float maxWidth, float cardW)
+    {
+        if (bcards.empty()) return;
+        m_renderer->DrawText(" ", startX, yRef, Colors::Cyan); // placeholder: caller draws proper title
+        // drawPlayerCityCardGrid-like rendering with custom cardW
+        const float spacing = 12.0f;
+        const float labelH = 0.0f;
+        float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+
+        int perRow = std::max(1, int((maxWidth + spacing) / (cardW + spacing)));
+        float x = startX;
+        yRef += sectionTitleH;
+        float curYLocal = yRef;
+        int col = 0;
+        for (const sevenWD::Card* card : bcards)
         {
-            if (card && card->getType() == type)
-                filtered.push_back(card);
+            drawCityCardSprite(*card, x, curYLocal, cardW, cardH);
+            ++col;
+            if (col >= perRow)
+            {
+                col = 0;
+                x = startX;
+                curYLocal += cardH + spacing + labelH;
+            }
+            else
+            {
+                x += cardW + spacing;
+            }
+        }
+        int rows = int((bcards.size() + perRow - 1) / perRow);
+        float rowHeight = cardH + spacing + labelH;
+        yRef = yRef + std::max(0, rows) * rowHeight - spacing + sectionSpacingAfter;
+    };
+
+    // Quick check: single-column layout with default cardW
+    float totalSingle = 0.0f;
+    for (const TypeBlock& tb : blocks)
+        totalSingle += calcBlockHeight(tb.cards, innerWidth, defaultCardW);
+
+    if (totalSingle <= contentAvailableH)
+    {
+        // fits in single column -> simple draw in original order
+        float y = contentStartY;
+        for (const TypeBlock& tb : blocks)
+        {
+            const char* typeName = cardTypeToString(tb.type);
+            m_renderer->DrawText(typeName ? typeName : "Cards", innerX, y, Colors::Cyan);
+            y += sectionTitleH;
+            // draw cards with default sizing using existing helper logic (keeps behavior)
+            float used = drawPlayerCityCardGrid(tb.cards, innerX, y, innerWidth);
+            y += used + sectionSpacingAfter;
+            if (y > panelY + panelH - 60.0f) break;
+        }
+        return;
+    }
+
+    // Need two-column layout. We'll assign blocks to columns greedily:
+    float colWidth = (innerWidth - columnGap) * 0.5f;
+
+    // Start with default cardW and attempt to fit by scaling down if needed
+    float cardW = defaultCardW;
+    bool fits = false;
+    for (float scale = 1.0f; scale >= 0.65f; scale -= 0.05f)
+    {
+        cardW = defaultCardW * scale;
+        // compute block heights when rendered in one column of width colWidth
+        struct HInfo { int idx; float h; };
+        std::vector<HInfo> infos; infos.reserve(blocks.size());
+        for (int i = 0; i < (int)blocks.size(); ++i)
+            infos.push_back({ i, calcBlockHeight(blocks[i].cards, colWidth, cardW) });
+
+        // sort indices by block height descending so largest goes first to left column
+        std::sort(infos.begin(), infos.end(), [](const HInfo& a, const HInfo& b) { return a.h > b.h; });
+
+        float leftH = 0.0f, rightH = 0.0f;
+        std::vector<int> leftIdx, rightIdx;
+        for (auto &inf : infos)
+        {
+            if (leftIdx.empty())
+            {
+                leftIdx.push_back(inf.idx);
+                leftH += inf.h;
+            }
+            else
+            {
+                if (leftH <= rightH)
+                {
+                    leftIdx.push_back(inf.idx);
+                    leftH += inf.h;
+                }
+                else
+                {
+                    rightIdx.push_back(inf.idx);
+                    rightH += inf.h;
+                }
+            }
         }
 
-        if (filtered.empty())
-            continue;
+        if (std::max(leftH, rightH) <= contentAvailableH)
+        {
+            // success, render using this cardW and assignment
+            fits = true;
 
-        const char* typeName = cardTypeToString(type);
-        m_renderer->DrawText(typeName ? typeName : "Cards", innerX, y, Colors::Cyan);
-        y += 28.0f;
-        float used = drawPlayerCityCardGrid(filtered, innerX, y, innerWidth);
-        y += used + 20.0f;
-        if (y > panelY + panelH - 60.0f)
+            // Build ordered lists in original order but placed into assigned columns
+            std::vector<TypeBlock> leftBlocks, rightBlocks;
+            // We want to keep a readable order; iterate original blocks and push to the column they were assigned to
+            std::unordered_set<int> leftSet(leftIdx.begin(), leftIdx.end()), rightSet(rightIdx.begin(), rightIdx.end());
+            for (int i = 0; i < (int)blocks.size(); ++i)
+            {
+                if (leftSet.count(i)) leftBlocks.push_back(blocks[i]);
+                else rightBlocks.push_back(blocks[i]);
+            }
+
+            // Draw columns
+            float leftX = innerX;
+            float rightX = innerX + colWidth + columnGap;
+            float yLeft = contentStartY;
+            float yRight = contentStartY;
+
+            // Left column draw
+            for (const auto& tb : leftBlocks)
+            {
+                const char* typeName = cardTypeToString(tb.type);
+                m_renderer->DrawText(typeName ? typeName : "Cards", leftX, yLeft, Colors::Cyan);
+                // draw block with our drawBlock helper which advances yRef
+                drawBlock(tb.cards, leftX, yLeft, colWidth, cardW);
+            }
+
+            // Right column draw
+            for (const auto& tb : rightBlocks)
+            {
+                const char* typeName = cardTypeToString(tb.type);
+                m_renderer->DrawText(typeName ? typeName : "Cards", rightX, yRight, Colors::Cyan);
+                drawBlock(tb.cards, rightX, yRight, colWidth, cardW);
+            }
+
             break;
+        }
+    }
+
+    if (!fits)
+    {
+        // As a last resort, fall back to single-column clipped rendering using the smallest allowed cardW
+        float y = contentStartY;
+        for (const TypeBlock& tb : blocks)
+        {
+            const char* typeName = cardTypeToString(tb.type);
+            m_renderer->DrawText(typeName ? typeName : "Cards", innerX, y, Colors::Cyan);
+            y += sectionTitleH;
+            // draw with reduced cardW to minimize overflow; use our local drawBlock to ensure consistent sizing
+            drawBlock(tb.cards, innerX, y, innerWidth, minCardW);
+            if (y > panelY + panelH - 60.0f) break;
+        }
     }
 }
 
