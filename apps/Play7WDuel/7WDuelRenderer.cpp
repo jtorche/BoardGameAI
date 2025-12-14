@@ -357,7 +357,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
                     m_renderer->DrawRect(wx - 4.0f, imgY - 4.0f, drawW + 8.0f, drawH + 8.0f, Colors::Green);
                 }
 
-                wx += drawW + 8.0f;
+                wx += drawW + 8;
             }
         }
     }
@@ -953,81 +953,114 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     float y = m_uiPos.militaryTrackY;
     float x1 = x0 + m_layout.militaryTrackLength;
 
-    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
-    m_renderer->DrawLine(x0, y + 15, x1, y + 15, Colors::Red);
+    const float trackY = y + 15.0f;
 
-    // Show numeric military score next to the label
+    // Helper: map military value (-9..+9, integer) or half-integer boundary to X coordinate on track
+    auto valueToX = [&](double value) -> float {
+        if (value < -9.5) value = -9.5;
+        if (value >  9.5) value =  9.5;
+        // normalize (-9.5..9.5) -> (0..1)
+        double t = (value + 9.5) / 19.0;
+        return x0 + float(t * m_layout.militaryTrackLength);
+    };
+
+    // Precompute boundary Xs for positions -9.5, -8.5, ... +9.5 (20 boundaries).
+    // The visual "slot" for score V is the horizontal span between boundary[a] and boundary[b+1]
+    std::array<float, 20> boundX;
+    for (int i = 0; i < 20; ++i)
+        boundX[i] = valueToX(-9.5 + i);
+
+    // Colored segments (slot-based). A segment covering scores [a..b] fills from boundary[a] to boundary[b+1]
+    struct Segment { int a, b; SDL_Color color; const char* label; };
+    const Segment segs[] = {
+        { 1, 2, Colors::Green,  "2 VP"  },
+        { 3, 5, Colors::Cyan,   "5 VP"  },
+        { 6, 8, Colors::Yellow, "10 VP" }
+    };
+
+    const int bandHalf = 3; // half thickness in pixels (total thickness = bandHalf*2+1)
+    for (const Segment& s : segs)
+    {
+        int startIndex = s.a + 9;
+        int endIndex = s.b + 1 + 9;
+        if (startIndex >= 0 && endIndex < int(boundX.size()) && endIndex > startIndex)
+        {
+            float sx = boundX[startIndex];
+            float ex = boundX[endIndex];
+            for (int dy = -bandHalf; dy <= bandHalf; ++dy)
+                m_renderer->DrawLine(sx, trackY + dy, ex, trackY + dy, s.color);
+
+            float cx = (sx + ex) * 0.5f;
+            m_renderer->DrawText(s.label, cx - 18.0f, trackY - 35.0f, Colors::White);
+        }
+
+        int nStartIndex = -s.b + 9;
+        int nEndIndex = -s.a + 1 + 9;
+        if (nStartIndex >= 0 && nEndIndex < int(boundX.size()) && nEndIndex > nStartIndex)
+        {
+            float sxn = boundX[nStartIndex];
+            float exn = boundX[nEndIndex];
+            for (int dy = -bandHalf; dy <= bandHalf; ++dy)
+                m_renderer->DrawLine(sxn, trackY + dy, exn, trackY + dy, s.color);
+
+            float cxn = (sxn + exn) * 0.5f;
+            m_renderer->DrawText(s.label, cxn - 18.0f, trackY - 35.0f, Colors::White);
+        }
+    }
+
+    // Draw baseline on top of bands
+    m_renderer->DrawText("MILITARY", x0 - 120, y, Colors::Red);
+    m_renderer->DrawLine(x0, trackY, x1, trackY, Colors::Red);
+
+    // Numeric current military score
     int pos = m_state.getMilitary();   // -9 → +9
     m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
 
-    // Draw graduation ticks for each step (-9..+9)
-    const int stepCount = 19; // -9..+9 inclusive
-    const float trackY = y + 15.0f;
-    const float smallTickHalf = 4.0f;
-    const float largeTickHalf = 8.0f;
-    for (int s = 0; s < stepCount; ++s)
+    // Draw vertical separators at boundaries (-9.5..+9.5).
+    // Use a single small white vertical line for each boundary (no double yellow lines).
+    const float sepHalfH = 12.0f;
+    const float smallTop = trackY - sepHalfH * 0.6f;
+    const float smallBottom = trackY + sepHalfH * 0.6f;
+    for (int i = 0; i < int(boundX.size()); ++i)
     {
-        int value = s - 9;
-        float tx = x0 + (s / float(stepCount - 1)) * m_layout.militaryTrackLength;
-
-        // Major ticks at 3 and 6 (and their negatives)
-        bool isMajor = (abs(value) == 3 || abs(value) == 6 || value == 0);
-        float top = trackY - (isMajor ? largeTickHalf : smallTickHalf);
-        float bottom = trackY + (isMajor ? largeTickHalf : smallTickHalf);
-
-        // Major ticks use a brighter color
-        m_renderer->DrawLine(tx, top, tx, bottom, isMajor ? Colors::Yellow : Colors::White);
+        float x = boundX[i];
+        // single small white separator
+        m_renderer->DrawLine(x, smallTop, x, smallBottom, Colors::White);
     }
 
-    float t = (pos + 9) / 18.0f;
-    float markerX = x0 + t * m_layout.militaryTrackLength;
+    // Draw current position marker centered in the slot for 'pos' (between boundX[pos+9] and boundX[pos+10])
+    float markerX = valueToX(pos); // center of the slot
+    m_renderer->DrawImage(GetMilitaryMarkerImage(), markerX - 15, y, 30, 30);
 
-    m_renderer->DrawImage(
-        GetMilitaryMarkerImage(),
-        markerX - 15, y,
-        30, 30
-    );
-
-    // Draw two token slots per player at thresholds 3 and 6 (game uses only these).
+    // Draw two token slots per player at thresholds 3 and 6 (use valueToX to place in slot centers)
     const int thresholds[2] = { 3, 6 };
     SDL_Renderer* rdr = m_renderer->GetSDLRenderer();
     if (!rdr) return;
 
     const int radius = 8;
-    // Colors: filled = available (white), outlined = taken (yellow)
     SDL_Color fillColor{ 255, 255, 255, 255 };
-    SDL_Color outlineColor{ 255, 215, 0, 255 }; // gold-ish for taken
+    SDL_Color outlineColor{ 255, 215, 0, 255 };
 
-    // Player 0 tokens (positive side)
     for (int i = 0; i < 2; ++i)
     {
         int threshold = thresholds[i];
-        float tx = x0 + (threshold + 9) / 18.0f * m_layout.militaryTrackLength;
+        float tx = valueToX(threshold);
         int cx = int(tx);
         int cy = int(trackY);
-
         bool taken = pos >= threshold;
-        if (taken) {
-            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
-        } else {
-            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
-        }
+        if (taken) m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        else       m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
     }
 
-    // Player 1 tokens (negative side)
     for (int i = 0; i < 2; ++i)
     {
         int threshold = thresholds[i];
-        float tx = x0 + ((-threshold) + 9) / 18.0f * m_layout.militaryTrackLength;
+        float tx = valueToX(-threshold);
         int cx = int(tx);
         int cy = int(trackY);
-
         bool taken = pos <= -threshold;
-        if (taken) {
-            m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
-        } else {
-            m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
-        }
+        if (taken) m_renderer->DrawCircleOutline(rdr, cx, cy, radius, outlineColor);
+        else       m_renderer->DrawFilledCircle(rdr, cx, cy, radius, fillColor);
     }
 }
 
