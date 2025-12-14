@@ -167,6 +167,8 @@ namespace sevenWD
 		u8 m_numCurrentDraftWonders = 0;
 		u8 m_currentDraftRound = 0;
 		u8 m_picksInCurrentRound = 0;
+		// player who starts the current draft round (0 or 1)
+		u8 m_wonderDraftStarter = 0;
 
 	private:
 		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex);

@@ -139,31 +139,70 @@ namespace sevenWD
 		if (city.m_unbuildWonderCount >= city.m_unbuildWonders.size())
 			return false;
 
+		// If this is the first pick in the round, remember the starter.
+		if (m_picksInCurrentRound == 0)
+			m_wonderDraftStarter = m_playerTurn;
+
+		// give picked wonder to the current player
 		Wonders wonder = m_currentDraftWonders[_draftIndex];
 		city.m_unbuildWonders[city.m_unbuildWonderCount++] = wonder;
 
+		// remove picked wonder from pool
 		std::swap(m_currentDraftWonders[_draftIndex], m_currentDraftWonders[m_numCurrentDraftWonders - 1]);
 		m_numCurrentDraftWonders--;
+
+		// increment pick count for this round
 		m_picksInCurrentRound++;
 
-		bool roundFinished = (m_picksInCurrentRound == 4);
-		if (roundFinished)
+		// Draft sequence per round:
+		//  - starter picks 1
+		//  - other player picks 2 (two consecutive picks)
+		//  - starter automatically receives the remaining wonder (forced pick)
+		//
+		// After the forced pick the round ends immediately and either refills for the
+		// next round or finishes the draft.
+
+		if (m_picksInCurrentRound == 1)
 		{
+			// after starter picked, other player picks next
+			m_playerTurn = (m_wonderDraftStarter + 1) % 2;
+		}
+		else if (m_picksInCurrentRound == 2)
+		{
+			// other player's first pick: they pick again (keep same playerTurn)
+			// m_playerTurn remains the same (other player)
+		}
+		else if (m_picksInCurrentRound == 3)
+		{
+			// other player's second pick just happened. Now assign the remaining wonder
+			// (forced) to the round starter.
+			if (m_numCurrentDraftWonders == 1)
+			{
+				u8 starter = m_wonderDraftStarter;
+				PlayerCity& starterCity = m_playerCity[starter];
+				// give remaining wonder
+				Wonders remaining = m_currentDraftWonders[0];
+				starterCity.m_unbuildWonders[starterCity.m_unbuildWonderCount++] = remaining;
+				// clear pool
+				m_numCurrentDraftWonders = 0;
+			}
+
+			// complete the round
 			m_currentDraftRound++;
 			m_picksInCurrentRound = 0;
+
 			if (m_currentDraftRound < 2)
 			{
+				// alternate starter for next round
+				m_wonderDraftStarter = (m_wonderDraftStarter + 1) % 2;
 				refillDraftWonders();
-				m_playerTurn = 1; // second batch starts with player 2
+				m_playerTurn = m_wonderDraftStarter;
 			}
 			else
 			{
+				// finished both rounds -> end drafting immediately
 				finishWonderDraft();
 			}
-		}
-		else
-		{
-			m_playerTurn = (m_playerTurn + 1) % 2;
 		}
 
 		return true;
@@ -777,7 +816,7 @@ namespace sevenWD
 
 			return finalCost + _card.m_goldCost;
 		}
-		return _card.m_goldCost;
+	 return _card.m_goldCost;
 	}
 
 	SpecialAction PlayerCity::addCard(const Card& _card, const PlayerCity& _otherCity)
