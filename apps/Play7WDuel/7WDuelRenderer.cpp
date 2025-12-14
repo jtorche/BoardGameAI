@@ -7,6 +7,24 @@
 #include <cctype> // added for sanitizing card names
 #include <chrono> // used for double-click timing
 
+// Helper: sanitize file name from card/wonder/token name
+static std::string MakeSafeName(const char* cname)
+{
+    std::string safe;
+    if (!cname) return safe;
+    std::string name(cname);
+    safe.reserve(name.size());
+    for (unsigned char ch : name)
+    {
+        if (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '(' || ch == ')')
+            safe.push_back(char(ch));
+        else if (std::isspace(ch))
+            safe.push_back('_');
+        // skip other characters (apostrophes, punctuation, etc.)
+    }
+    return safe;
+}
+
 // keep previous constructor
 SevenWDuelRenderer::SevenWDuelRenderer(const sevenWD::GameState& state, RendererInterface* renderer)
     : m_state(state), m_renderer(renderer)
@@ -861,10 +879,13 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                  }
             }
         }
-        // Hidden node: draw card back (slot reserved)
+        // Hidden node: decide back image from node flags + current age (node.m_cardId may be invalid)
         else
         {
-            SDL_Texture* back = GetCardBackImage();
+            // Hidden node: decide back image from node flags + current age (node.m_cardId may be invalid)
+            bool isGuild = node.m_isGuildCard != 0;
+            u32 age = m_state.getCurrentAge(); // 0..2 (or u32(-1) if uninitialized)
+            SDL_Texture* back = GetCardBackImageForNode(isGuild, age);
             m_renderer->DrawImage(back, x, y, m_layout.cardW, m_layout.cardH);
         }
     }
@@ -933,38 +954,6 @@ void SevenWDuelRenderer::drawWonderDraft(UIState* ui)
 		else
 			m_renderer->DrawText("Wonder", x + 12.0f, y + cardH * 0.5f, Colors::White);
 	}
-}
-
-// Image loaders (existants)
-SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
-{
-    const char* cname = card.getName();
-    if (!cname || cname[0] == '\0')
-        return m_renderer->LoadImage("assets/cards/card.png");
-
-    // Build a filesystem-safe name from the card name:
-    // - keep alnum and a few safe punctuation characters
-    // - convert whitespace to underscore
-    std::string name(cname);
-    std::string safe;
-    safe.reserve(name.size());
-    for (unsigned char ch : name)
-    {
-        if (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '(' || ch == ')')
-            safe.push_back(char(ch));
-        else if (std::isspace(ch))
-            safe.push_back('_');
-        // skip other characters (apostrophes, punctuation, etc.)
-    }
-
-    std::string path = std::string("assets/cards/") + safe + ".png";
-    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
-
-    // Fallback to generic card image if specific file not found
-    if (!tex)
-        tex = m_renderer->LoadImage("assets/cards/card.png");
-
-    return tex;
 }
 
 // ---------------------------------------------------------------------
@@ -1216,19 +1205,117 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
     // Intentionally no outline or additional highlight for the magnified card.
 }
 
-SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
+// Image loaders (updated)
+SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
 {
-    return m_renderer->LoadImage("assets/card_back.png");
+    const char* cname = card.getName();
+    if (!cname || cname[0] == '\0')
+        return m_renderer->LoadImage("assets/cards/card.png");
+
+    // Build a filesystem-safe name from the card name:
+    // - keep alnum and a few safe punctuation characters
+    // - convert whitespace to underscore
+    std::string name(cname);
+    std::string safe;
+    safe.reserve(name.size());
+    for (unsigned char ch : name)
+    {
+        if (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '(' || ch == ')')
+            safe.push_back(char(ch));
+        else if (std::isspace(ch))
+            safe.push_back('_');
+        // skip other characters (apostrophes, punctuation, etc.)
+    }
+
+    std::string path = std::string("assets/cards/") + safe + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+
+    // Fallback to generic card image if specific file not found
+    if (!tex)
+        tex = m_renderer->LoadImage("assets/cards/card.png");
+
+    return tex;
 }
 
+SDL_Texture* SevenWDuelRenderer::GetCardBackImage(const sevenWD::Card& card)
+{
+    // Prefer a guild-specific back for guild cards.
+    if (card.getType() == sevenWD::CardType::Guild)
+    {
+        SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_guild.png");
+        if (tex) return tex;
+        // fallback to age/generic if guild-specific missing
+    }
+
+    // If we have a GameContext, determine which age range this card belongs to using card.getId()
+    // and counts provided by GameContext. This is robust regardless of how ids were assigned.
+    if (m_state.m_context)
+    {
+        u8 gid = card.getId(); // global id in m_allCards
+        u32 n1 = m_state.m_context->getAge1CardCount();
+        u32 n2 = m_state.m_context->getAge2CardCount();
+        u32 n3 = m_state.m_context->getAge3CardCount();
+
+        if (gid < n1)
+        {
+            SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age1.png");
+            if (tex) return tex;
+        }
+        else if (gid < n1 + n2)
+        {
+            SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age2.png");
+            if (tex) return tex;
+        }
+        else if (gid < n1 + n2 + n3)
+        {
+            SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age3.png");
+            if (tex) return tex;
+        }
+        // if not in age ranges, fall through to generic
+    }
+
+    // final fallback
+    SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back.png");
+    return tex ? tex : nullptr;
+}
 SDL_Texture* SevenWDuelRenderer::GetWonderImage(sevenWD::Wonders wonder)
 {
-    return m_renderer->LoadImage("assets/wonders/wonder.png");
+    if (!m_state.m_context)
+        return m_renderer->LoadImage("assets/wonders/wonder.png");
+
+    const sevenWD::Card& wonderCard = m_state.m_context->getWonder(wonder);
+    const char* cname = wonderCard.getName();
+    if (!cname || cname[0] == '\0')
+        return m_renderer->LoadImage("assets/wonders/wonder.png");
+
+    std::string safe = MakeSafeName(cname);
+    std::string path = std::string("assets/wonders/") + safe + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+
+    if (!tex)
+        tex = m_renderer->LoadImage("assets/wonders/wonder.png");
+
+    return tex;
 }
 
 SDL_Texture* SevenWDuelRenderer::GetScienceTokenImage(sevenWD::ScienceToken token)
 {
-    return m_renderer->LoadImage("assets/tokens/token.png");
+    if (!m_state.m_context)
+        return m_renderer->LoadImage("assets/tokens/token.png");
+
+    const sevenWD::Card& tokenCard = m_state.m_context->getScienceToken(token);
+    const char* cname = tokenCard.getName();
+    if (!cname || cname[0] == '\0')
+        return m_renderer->LoadImage("assets/tokens/token.png");
+
+    std::string safe = MakeSafeName(cname);
+    std::string path = std::string("assets/tokens/") + safe + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+
+    if (!tex)
+        tex = m_renderer->LoadImage("assets/tokens/token.png");
+
+    return tex;
 }
 
 SDL_Texture* SevenWDuelRenderer::GetCoinImage()
@@ -1248,7 +1335,21 @@ SDL_Texture* SevenWDuelRenderer::GetBackgroundPanel()
 
 SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource)
 {
-    return m_renderer->LoadImage("assets/resources/resource.png");
+    switch(resource)
+    {
+    case sevenWD::ResourceType::Wood:
+        return m_renderer->LoadImage("assets/resources/wood.png");
+    case sevenWD::ResourceType::Stone:
+        return m_renderer->LoadImage("assets/resources/stone.png");
+    case sevenWD::ResourceType::Clay:
+        return m_renderer->LoadImage("assets/resources/clay.png");
+    case sevenWD::ResourceType::Glass:
+        return m_renderer->LoadImage("assets/resources/glass.png");
+    case sevenWD::ResourceType::Papyrus:
+        return m_renderer->LoadImage("assets/resources/papyrus.png");
+    default:
+        return m_renderer->LoadImage("assets/resources/resource.png");
+    }
 }
 
 SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
@@ -1265,4 +1366,45 @@ SDL_Texture* SevenWDuelRenderer::GetWeakNormalImage()
 SDL_Texture* SevenWDuelRenderer::GetWeakRareImage()
 {
     return m_renderer->LoadImage("assets/resources/weak_rare.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetCardBackImageForNode(bool isGuild, u32 age)
+{
+    // Guild-specific back preferred when flagged
+    if (isGuild)
+    {
+        SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_guild.png");
+        if (tex) return tex;
+        // fallthrough to age-specific/generic if missing
+    }
+
+    // Use current age from GameState when node doesn't carry a concrete card id yet.
+    // Age values: 0 => Age I, 1 => Age II, 2 => Age III
+    switch (age)
+    {
+    case 0:
+    {
+        SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age1.png");
+        if (tex) return tex;
+        break;
+    }
+    case 1:
+    {
+        SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age2.png");
+        if (tex) return tex;
+        break;
+    }
+    case 2:
+    {
+        SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back_age3.png");
+        if (tex) return tex;
+        break;
+    }
+    default:
+        break;
+    }
+
+    // Final generic fallback
+    SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back.png");
+    return tex ? tex : nullptr;
 }

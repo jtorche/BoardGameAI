@@ -67,7 +67,8 @@ public:
     // will only display the current game state and will not read or write any
     // interactive fields (no hover/click handling). The application can also
     // pass a pointer to the active GameController in `gameController` so the
-    // renderer can display controller state (read-only).
+    // renderer can display controller state (read-only). The renderer
+    // will never mutate the controller through this pointer.
     struct UIState
     {
         int mouseX = 0;
@@ -94,7 +95,7 @@ public:
         // If renderer detected a move selection it sets this and leaves it to
         // caller to execute and reset (moveRequested -> true -> caller executes move).
         bool moveRequested = false;
-        sevenWD::Move requestedMove {};
+        sevenWD::Move requestedMove{};
 
         // Optional pointer to the GameController (read-only). If set the renderer
         // will display controller state (mode, win type, etc.). The renderer
@@ -123,8 +124,8 @@ public:
         float wonderW = 96.0f;
         float wonderH = 56.0f;
 
-        float tokenW = 48.0f;
-        float tokenH = 48.0f;
+        float tokenW = 60.0f;
+        float tokenH = 60.0f;
 
         float playerPanelW = 360.0f;
         float playerPanelH = 200.0f;
@@ -191,6 +192,10 @@ private:
     void drawCardGraph(UIState* ui);
 
     SDL_Texture* GetCardImage(const sevenWD::Card& card);
+    // New overload: back image chosen per-card (age-specific or guild-specific).
+    SDL_Texture* GetCardBackImage(const sevenWD::Card& card);
+    SDL_Texture* GetCardBackImageForNode(bool isGuild, u32 age);
+    // Keep a generic fallback overload for existing call sites if needed.
     SDL_Texture* GetCardBackImage();
     SDL_Texture* GetWonderImage(sevenWD::Wonders wonder);
     SDL_Texture* GetScienceTokenImage(sevenWD::ScienceToken token);

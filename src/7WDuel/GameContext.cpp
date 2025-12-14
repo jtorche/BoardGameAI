@@ -105,7 +105,7 @@ namespace sevenWD
 		m_age2Cards.push_back(Card(CardTag<CardType::Blue>{}, "Rostres",  4).setResourceCost({ RT::Stone, RT::Wood }).setChainOut(ChainingSymbol::Bank));
 
 		m_age2Cards.push_back(Card(CardTag<CardType::Brown>{}, "Scierie", RT::Wood, 2).setGoldCost(2));
-		m_age2Cards.push_back(Card(CardTag<CardType::Brown>{}, "Briquerie", RT::Clay, 2).setGoldCost(2));
+		m_age2Cards.push_back(Card(CardTag<CardType::Brown>{}, "Briqueterie", RT::Clay, 2).setGoldCost(2));
 		m_age2Cards.push_back(Card(CardTag<CardType::Brown>{}, "Carriere", RT::Stone, 2).setGoldCost(2));
 
 		m_age2Cards.push_back(Card(CardTag<CardType::Grey>{}, "Soufflerie", RT::Glass));
