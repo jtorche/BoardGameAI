@@ -251,25 +251,32 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         m_renderer->DrawText("Chain:", innerX + margin, curY, Colors::Cyan);
         float cx = innerX + margin + 68.0f;
         float maxX = innerX + innerW - margin;
-        // Skip ChainingSymbol::None (value 0) to avoid drawing a default/generic image
+
+        // Slight scale-up for chaining icons to make them more prominent
+        const float chainScale = 1.15f; // 15% larger
+        const float drawW = m_layout.chainingIconW * chainScale;
+        const float drawH = m_layout.chainingIconH * chainScale;
+        const float gap = 8.0f;
+
+        // Skip ChainingSymbol::None (value 0)
         for (u8 s = 1; s < u8(sevenWD::ChainingSymbol::Count); ++s)
         {
             if ((city.m_chainingSymbols & (1u << s)) == 0) continue;
-            if (cx + m_layout.chainingIconW > maxX) break;
+            if (cx + drawW > maxX) break;
 
             sevenWD::ChainingSymbol sym = sevenWD::ChainingSymbol(s);
             SDL_Texture* symTex = GetChainingSymbolImage(sym);
 
-            // If no image exists for this symbol, skip drawing it (prevents a generic/incorrect icon)
+            // If no image exists for this symbol, skip drawing it.
             if (!symTex)
             {
-                cx += m_layout.chainingIconW + 8.0f;
+                cx += drawW + gap;
                 continue;
             }
 
-            float imgY = curY + (baseRowH - m_layout.chainingIconH) * 0.5f;
-            m_renderer->DrawImage(symTex, cx, imgY, m_layout.chainingIconW, m_layout.chainingIconH);
-            cx += m_layout.chainingIconW + 8.0f;
+            float imgY = curY + (baseRowH - drawH) * 0.5f;
+            m_renderer->DrawImage(symTex, cx, imgY, drawW, drawH);
+            cx += drawW + gap;
         }
     }
     curY += baseRowH + spacing;
