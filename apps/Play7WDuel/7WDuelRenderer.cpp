@@ -1415,7 +1415,8 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
 
                 // draw cost text above magnified wonder
                 std::string costText = std::string("Cost: ") + std::to_string(int(cost));
-                m_renderer->DrawText(costText, previewX + 8.0f, previewY - topPad + 8.0f, Colors::Yellow);
+                // position the cost above the magnified wonder (use the magnified slot origin mx,my)
+                m_renderer->DrawText(costText, mx + 8.0f, my - topPad + 8.0f, Colors::Yellow);
 
                 // draw wonder image (use wonder-specific image loader)
                 SDL_Texture* wtex = GetWonderImage(wonder);
