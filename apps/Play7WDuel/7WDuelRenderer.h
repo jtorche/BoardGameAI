@@ -149,6 +149,9 @@ public:
         // weak-production icons
         float weakIconW = 28.0f;
         float weakIconH = 28.0f;
+        // science symbol icon sizes used in player panels (distinct from science tokens)
+        float scienceSymbolW = 28.0f;
+        float scienceSymbolH = 28.0f;
 
         float militaryTrackLength = 700.0f;
     };
@@ -212,4 +215,5 @@ private:
     SDL_Texture* GetChainingSymbolImage(sevenWD::ChainingSymbol symbol);
     SDL_Texture* GetWeakNormalImage();
     SDL_Texture* GetWeakRareImage();
+    SDL_Texture* GetScienceSymbolImage(sevenWD::ScienceSymbol symbol);
 };

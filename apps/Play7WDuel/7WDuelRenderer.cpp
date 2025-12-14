@@ -400,23 +400,48 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         }
     }
 
-    // Row 7: Science tokens owned (icons)
+    // Row 7: Science symbols owned — draw dedicated symbol icons + counts.
+    // Do NOT draw central science-token images here (those are selectable from
+    // the central token area when the controller requests it).
     {
         m_renderer->DrawText("Science:", innerX + margin, curY, Colors::Green);
         float sx = innerX + margin + 88.0f;
-        const float scienceIcon = 28.0f;
         float maxX = innerX + innerW - margin;
+        const float symW = m_layout.scienceSymbolW;
+        const float symH = m_layout.scienceSymbolH;
+        const float gap = 8.0f;
+
         for (int sc = 0; sc < int(sevenWD::ScienceSymbol::Count); ++sc)
         {
             int owned = city.m_ownedScienceSymbol[sc];
-            for (int k = 0; k < owned; ++k)
+            if (owned <= 0) continue;
+
+            // Wrap to next visual line if needed
+            float requiredW = symW + gap + 36.0f; // icon + gap + estimated " xN" text width
+            if (sx + requiredW > maxX)
             {
-                if (sx + scienceIcon > maxX) break;
-                float imgY = curY + (baseRowH - scienceIcon) * 0.5f;
-                m_renderer->DrawImage(GetScienceTokenImage(sevenWD::ScienceToken(sc)), sx, imgY, scienceIcon, scienceIcon);
-                sx += scienceIcon + 6.0f;
+                curY += baseRowH;
+                sx = innerX + margin + 88.0f;
+                maxX = innerX + innerW - margin;
             }
-            if (sx > maxX) break;
+
+            // draw symbol icon
+            sevenWD::ScienceSymbol symbol = sevenWD::ScienceSymbol(sc);
+            SDL_Texture* symTex = GetScienceSymbolImage(symbol);
+            float imgY = curY + (baseRowH - symH) * 0.5f;
+            if (symTex)
+                m_renderer->DrawImage(symTex, sx, imgY, symW, symH);
+            else
+                m_renderer->DrawText("?", sx, imgY, Colors::White);
+
+            // draw owned count if > 1
+            if (owned > 1)
+            {
+                std::string cnt = "x" + std::to_string(owned);
+                m_renderer->DrawText(cnt, sx + symW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+            }
+
+            sx += symW + gap + 36.0f;
         }
     }
 }
@@ -1426,4 +1451,21 @@ SDL_Texture* SevenWDuelRenderer::GetCardBackImageForNode(bool isGuild, u32 age)
     // Final generic fallback
     SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back.png");
     return tex ? tex : nullptr;
+}
+
+SDL_Texture* SevenWDuelRenderer::GetScienceSymbolImage(sevenWD::ScienceSymbol symbol)
+{
+    // Map enum -> asset name (must match files in assets/science/)
+    static const char* names[] = {
+        "Wheel", "Script", "Triangle", "Bowl", "SolarClock", "Globe", "Law"
+    };
+    int idx = int(symbol);
+    if (idx < 0 || idx >= int(sevenWD::ScienceSymbol::Count))
+        return m_renderer->LoadImage("assets/science/symbol.png");
+
+    std::string path = std::string("assets/science/") + names[idx] + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+    if (!tex)
+        tex = m_renderer->LoadImage("assets/science/symbol.png");
+    return tex;
 }
