@@ -170,6 +170,7 @@ private:
     void drawPlayerCityView(UIState* ui, UIGameState* uiGameState);
     float drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth);
     void drawCityCardSprite(const sevenWD::Card& card, float x, float y, float w, float h);
+    void drawWonderDraft(UIState* ui);
     const char* cardTypeToString(sevenWD::CardType type) const;
 
     // Graph layout helpers

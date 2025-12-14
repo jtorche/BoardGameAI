@@ -6,7 +6,18 @@ namespace sevenWD
 	void GameController::enumerateMoves(std::vector<Move>& _moves) const
 	{
 		_moves.clear();
-		if (m_state == State::Play)
+		if (m_state == State::DraftWonder)
+		{
+			u8 count = m_gameState.getNumDraftableWonders();
+			for (u8 i = 0; i < count; ++i)
+			{
+				Move move{};
+				move.playableCard = i;
+				move.action = Move::DraftWonder;
+				_moves.push_back(move);
+			}
+		}
+		else if (m_state == State::Play)
 		{
 			for (u8 i = 0; i < m_gameState.m_numPlayableCards; ++i)
 			{
@@ -128,7 +139,15 @@ namespace sevenWD
 
 		SpecialAction action = sevenWD::SpecialAction::Nothing;
 
-		if (_move.action == Move::Pick)
+		if (_move.action == Move::DraftWonder)
+		{
+			if (m_gameState.draftWonder(_move.playableCard))
+			{
+				m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
+			}
+			return false;
+		}
+		else if (_move.action == Move::Pick)
 		{
 			action = m_gameState.pick(_move.playableCard);
 			if (action == sevenWD::SpecialAction::TakeScienceToken && m_gameState.m_numScienceToken)
@@ -184,7 +203,7 @@ namespace sevenWD
 		}
 
 		m_state = State::Play;
-
+ 
 		return false;
 	}
 
@@ -217,6 +236,10 @@ namespace sevenWD
 
 		case Move::ScienceToken:
 			out << "Pick science token " << move.playableCard; 
+			return out;
+
+		case Move::DraftWonder:
+			out << "Draft wonder option " << int(move.playableCard);
 			return out;
 		}
 

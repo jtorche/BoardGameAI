@@ -84,10 +84,89 @@ namespace sevenWD
 	GameState::GameState(const GameContext& _context) : m_context{ &_context }, m_playerCity{ &_context, &_context }
 	{
 		initScienceTokens();
-		// m_context->initCityWithRandomWonders(m_playerCity[0], m_playerCity[1]);
-		m_context->initCityWithFixedWonders(m_playerCity[0], m_playerCity[1]);
-
+		initWonderDraft();
 		initAge1Graph();
+	}
+
+	void GameState::initWonderDraft()
+	{
+		m_isWonderDrafting = true;
+		m_currentDraftRound = 0;
+		m_picksInCurrentRound = 0;
+		m_nextDraftWonderIndex = 0;
+		m_numCurrentDraftWonders = 0;
+
+		for (PlayerCity& city : m_playerCity)
+		{
+			city.m_gold = 7;
+			city.m_unbuildWonderCount = 0;
+		}
+
+		for (u32 i = 0; i < m_wonderDraftPool.size(); ++i)
+			m_wonderDraftPool[i] = Wonders(i);
+
+		std::shuffle(m_wonderDraftPool.begin(), m_wonderDraftPool.end(), m_context->rand());
+
+		refillDraftWonders();
+		m_playerTurn = 0;
+	}
+
+	void GameState::refillDraftWonders()
+	{
+		m_numCurrentDraftWonders = 0;
+		const u8 total = u8(m_wonderDraftPool.size());
+		const u8 remaining = total - m_nextDraftWonderIndex;
+		const u8 toDraw = std::min<u8>(4, remaining);
+		for (u8 i = 0; i < toDraw; ++i)
+		{
+			m_currentDraftWonders[m_numCurrentDraftWonders++] = m_wonderDraftPool[m_nextDraftWonderIndex++];
+		}
+	}
+
+	void GameState::finishWonderDraft()
+	{
+		m_isWonderDrafting = false;
+		m_numCurrentDraftWonders = 0;
+		m_playerTurn = 0;
+	}
+
+	bool GameState::draftWonder(u32 _draftIndex)
+	{
+		if (!m_isWonderDrafting || _draftIndex >= m_numCurrentDraftWonders)
+			return false;
+
+		PlayerCity& city = getCurrentPlayerCity();
+		if (city.m_unbuildWonderCount >= city.m_unbuildWonders.size())
+			return false;
+
+		Wonders wonder = m_currentDraftWonders[_draftIndex];
+		city.m_unbuildWonders[city.m_unbuildWonderCount++] = wonder;
+
+		std::swap(m_currentDraftWonders[_draftIndex], m_currentDraftWonders[m_numCurrentDraftWonders - 1]);
+		m_numCurrentDraftWonders--;
+		m_picksInCurrentRound++;
+
+		bool roundFinished = (m_picksInCurrentRound == 4);
+		if (roundFinished)
+		{
+			m_currentDraftRound++;
+			m_picksInCurrentRound = 0;
+			if (m_currentDraftRound < 2)
+			{
+				refillDraftWonders();
+				m_playerTurn = 1; // second batch starts with player 2
+			}
+			else
+			{
+				finishWonderDraft();
+			}
+		}
+		else
+		{
+			m_playerTurn = (m_playerTurn + 1) % 2;
+		}
+
+		return true;
 	}
 
 	//----------------------------------------------------------------------------
@@ -111,6 +190,17 @@ namespace sevenWD
 		DEBUG_ASSERT(_index < getCurrentPlayerCity().m_unbuildWonderCount);
 		Wonders wonder = getCurrentPlayerCity().m_unbuildWonders[_index];
 		return m_context->getWonder(wonder);
+	}
+
+	u8 GameState::getNumDraftableWonders() const
+	{
+		return m_isWonderDrafting ? m_numCurrentDraftWonders : 0;
+	}
+
+	Wonders GameState::getDraftableWonder(u32 _index) const
+	{
+		DEBUG_ASSERT(_index < m_numCurrentDraftWonders);
+		return m_currentDraftWonders[_index];
 	}
 
 	SpecialAction GameState::pick(u32 _playableCardIndex)
@@ -550,10 +640,10 @@ namespace sevenWD
 				pickCardAdnInitNode(node);
 		}
 	}
-
-	std::array<ScienceToken, 5> GameState::getUnusedScienceToken() const
-	{
-		std::array<ScienceToken, 5> tokens;
+ 
+ 	std::array<ScienceToken, 5> GameState::getUnusedScienceToken() const
+ 	{
+ 		std::array<ScienceToken, 5> tokens;
 		for (u32 i = 5; i < u32(ScienceToken::Count); ++i)
 			tokens[i - 5] = m_scienceTokens[i];
 
@@ -819,7 +909,7 @@ namespace sevenWD
 		for (u8& x : scienceCards)
 			x = u8(-1);
 		for (u8& x : guildCards)
-			x = u8(-1);
+		 x = u8(-1);
 	}
 
 	void DiscardedCards::add(const GameContext& _context, const Card& _card)

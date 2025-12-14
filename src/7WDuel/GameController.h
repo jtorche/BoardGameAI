@@ -6,7 +6,7 @@ namespace sevenWD
 {
 	struct Move
 	{
-		enum Action : u8 { Pick, Burn, BuildWonder, ScienceToken, Count };
+		enum Action : u8 { Pick, Burn, BuildWonder, ScienceToken, DraftWonder, Count };
 		u8 playableCard;
 		Action action;
 		u8 wonderIndex = u8(-1);
@@ -23,7 +23,10 @@ namespace sevenWD
 
 	struct GameController
 	{
-		GameController(const GameContext& _context) : m_gameState(_context) {}
+		GameController(const GameContext& _context) : m_gameState(_context)
+		{
+			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
+		}
 
 		void enumerateMoves(std::vector<Move>&) const;
 		bool play(Move _move);
@@ -35,6 +38,7 @@ namespace sevenWD
 
 		enum class State
 		{
+			DraftWonder,
 			Play,
 			PickScienceToken,
 			GreatLibraryToken,

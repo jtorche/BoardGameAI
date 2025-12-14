@@ -22,6 +22,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
         ui->hoveredWonderPlayer = -1;
         ui->hoveredWonderIndex = -1;
         ui->hoveredScienceToken = -1;
+        ui->hoveredWonder = -1;
         ui->moveRequested = false;
     }
 
@@ -50,6 +51,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
             using S = sevenWD::GameController::State;
             switch (s)
             {
+            case S::DraftWonder: return "DraftWonder";
             case S::Play: return "Play";
             case S::PickScienceToken: return "PickScienceToken";
             case S::GreatLibraryToken: return "GreatLibraryToken";
@@ -81,8 +83,13 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
     drawPlayers(ui);
     drawMilitaryTrack();
     drawScienceTokens(ui);
-    drawCardGraph(ui);
-    drawSelectedCard(ui);
+    if (m_state.isDraftingWonders())
+        drawWonderDraft(ui);
+    else
+    {
+        drawCardGraph(ui);
+        drawSelectedCard(ui);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -863,6 +870,58 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
     }
 }
 
+void SevenWDuelRenderer::drawWonderDraft(UIState* ui)
+{
+	u8 count = m_state.getNumDraftableWonders();
+	if (count == 0)
+		return;
+
+	const float cardW = m_layout.wonderW * 1.5f;
+	const float cardH = m_layout.wonderH * 1.5f;
+	const float spacing = 30.0f;
+	const float totalWidth = count * cardW + (count - 1) * spacing;
+	const float startX = m_uiPos.pyramidBaseX - totalWidth * 0.5f;
+	const float y = m_uiPos.pyramidBaseY - cardH * 0.5f;
+
+	std::string title = "Wonder Draft - Player " + std::to_string(m_state.getCurrentPlayerTurn() + 1);
+	m_renderer->DrawText(title, startX, y - cardH - 36.0f, Colors::Yellow);
+	std::string round = "Round " + std::to_string(m_state.getCurrentWonderDraftRound() + 1) + "/2";
+	m_renderer->DrawText(round, startX, y - cardH - 12.0f, Colors::White);
+
+	const bool canRequestMove = ui && ui->gameController && ui->gameController->m_state == sevenWD::GameController::State::DraftWonder;
+
+	for (u8 i = 0; i < count; ++i)
+	{
+		float x = startX + i * (cardW + spacing);
+		SDL_Rect rect{ int(x), int(y), int(cardW), int(cardH) };
+
+		bool hovered = ui &&
+			ui->mouseX >= rect.x && ui->mouseX <= rect.x + rect.w &&
+			ui->mouseY >= rect.y && ui->mouseY <= rect.y + rect.h;
+
+		if (hovered)
+		{
+			ui->hoveredWonder = i;
+			m_renderer->DrawRect(x - 6.0f, y - 6.0f, cardW + 12.0f, cardH + 12.0f, Colors::Yellow);
+
+			if (ui->leftClick && canRequestMove)
+			{
+				sevenWD::Move mv{};
+				mv.action = sevenWD::Move::Action::DraftWonder;
+				mv.playableCard = i;
+				ui->requestedMove = mv;
+				ui->moveRequested = true;
+			}
+		}
+
+		SDL_Texture* tex = GetWonderImage(m_state.getDraftableWonder(i));
+		if (tex)
+			m_renderer->DrawImage(tex, x, y, cardW, cardH);
+		else
+			m_renderer->DrawText("Wonder", x + 12.0f, y + cardH * 0.5f, Colors::White);
+	}
+}
+
 // Image loaders (existants)
 SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
 {
@@ -895,57 +954,6 @@ SDL_Texture* SevenWDuelRenderer::GetCardImage(const sevenWD::Card& card)
     return tex;
 }
 
-SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
-{
-    return m_renderer->LoadImage("assets/card_back.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetWonderImage(sevenWD::Wonders wonder)
-{
-    return m_renderer->LoadImage("assets/wonders/wonder.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetScienceTokenImage(sevenWD::ScienceToken token)
-{
-    return m_renderer->LoadImage("assets/tokens/token.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetCoinImage()
-{
-    return m_renderer->LoadImage("assets/ui/coin.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetMilitaryMarkerImage()
-{
-    return m_renderer->LoadImage("assets/ui/military.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetBackgroundPanel()
-{
-    return m_renderer->LoadImage("assets/ui/panel.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource)
-{
-    return m_renderer->LoadImage("assets/resources/resource.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
-{
-    return m_renderer->LoadImage("assets/chaining/symbol.png");
-}
-
-// New weak icons
-SDL_Texture* SevenWDuelRenderer::GetWeakNormalImage()
-{
-    return m_renderer->LoadImage("assets/resources/weak_normal.png");
-}
-
-SDL_Texture* SevenWDuelRenderer::GetWeakRareImage()
-{
-    return m_renderer->LoadImage("assets/resources/weak_rare.png");
-}
-
 // ---------------------------------------------------------------------
 void SevenWDuelRenderer::drawMilitaryTrack()
 {
@@ -958,11 +966,11 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     // Helper: map military value (-9..+9, integer) or half-integer boundary to X coordinate on track
     auto valueToX = [&](double value) -> float {
         if (value < -9.5) value = -9.5;
-        if (value >  9.5) value =  9.5;
+        if (value > 9.5) value = 9.5;
         // normalize (-9.5..9.5) -> (0..1)
         double t = (value + 9.5) / 19.0;
         return x0 + float(t * m_layout.militaryTrackLength);
-    };
+        };
 
     // Precompute boundary Xs for positions -9.5, -8.5, ... +9.5 (20 boundaries).
     // The visual "slot" for score V is the horizontal span between boundary[a] and boundary[b+1]
@@ -1116,8 +1124,8 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                 {
                     // Preserve wonder aspect ratio defined by layout.wonderW / wonderH
                     float aspect = (m_layout.wonderW > 0.0f && m_layout.wonderH > 0.0f)
-                                       ? (m_layout.wonderW / m_layout.wonderH)
-                                       : (m_layout.cardW / m_layout.cardH);
+                        ? (m_layout.wonderW / m_layout.wonderH)
+                        : (m_layout.cardW / m_layout.cardH);
 
                     // fit into mw x mh while preserving aspect
                     float targetW = std::min(mw, mh * aspect);
@@ -1193,4 +1201,55 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
         m_renderer->DrawText("[no image]", mx + 8.0f, my + 8.0f, Colors::White);
 
     // Intentionally no outline or additional highlight for the magnified card.
+}
+
+SDL_Texture* SevenWDuelRenderer::GetCardBackImage()
+{
+    return m_renderer->LoadImage("assets/card_back.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetWonderImage(sevenWD::Wonders wonder)
+{
+    return m_renderer->LoadImage("assets/wonders/wonder.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetScienceTokenImage(sevenWD::ScienceToken token)
+{
+    return m_renderer->LoadImage("assets/tokens/token.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetCoinImage()
+{
+    return m_renderer->LoadImage("assets/ui/coin.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetMilitaryMarkerImage()
+{
+    return m_renderer->LoadImage("assets/ui/military.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetBackgroundPanel()
+{
+    return m_renderer->LoadImage("assets/ui/panel.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource)
+{
+    return m_renderer->LoadImage("assets/resources/resource.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
+{
+    return m_renderer->LoadImage("assets/chaining/symbol.png");
+}
+
+// New weak icons
+SDL_Texture* SevenWDuelRenderer::GetWeakNormalImage()
+{
+    return m_renderer->LoadImage("assets/resources/weak_normal.png");
+}
+
+SDL_Texture* SevenWDuelRenderer::GetWeakRareImage()
+{
+    return m_renderer->LoadImage("assets/resources/weak_rare.png");
 }

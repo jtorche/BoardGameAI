@@ -26,7 +26,7 @@ namespace sevenWD
 		std::array<bool, u32(CardType::Count)> m_resourceDiscount = {};
 		std::array<u8, u32(ResourceType::Count)> m_bestProductionCardId;
 		std::array<Wonders, 4> m_unbuildWonders = {};
-		u8 m_unbuildWonderCount = 4;
+		u8 m_unbuildWonderCount = 0;
 
 		PlayerCity(const GameContext* _context) : m_context{ _context } 
 		{
@@ -90,6 +90,11 @@ namespace sevenWD
 		const PlayerCity& getPlayerCity(u32 _player) const { return m_playerCity[_player]; };
 
 		std::array<ScienceToken, 5> getUnusedScienceToken() const;
+		bool isDraftingWonders() const { return m_isWonderDrafting; }
+		u8 getNumDraftableWonders() const;
+		Wonders getDraftableWonder(u32 _index) const;
+		u8 getCurrentWonderDraftRound() const { return m_currentDraftRound; }
+		bool draftWonder(u32 _draftIndex);
 
 		SpecialAction pick(u32 _playableCardIndex);
 		void burn(u32 _playableCardIndex);
@@ -154,6 +159,14 @@ namespace sevenWD
 		bool militaryToken2[2] = { false,false };
 		bool militaryToken5[2] = { false,false };
 
+		bool m_isWonderDrafting = false;
+		std::array<Wonders, u32(Wonders::Count)> m_wonderDraftPool;
+		u8 m_nextDraftWonderIndex = 0;
+		std::array<Wonders, 4> m_currentDraftWonders = {};
+		u8 m_numCurrentDraftWonders = 0;
+		u8 m_currentDraftRound = 0;
+		u8 m_picksInCurrentRound = 0;
+
 	private:
 		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex);
 		u32 genInversePyramidGraph(u32 _baseSize, u32 _numRow, u32 _startNodeIndex);
@@ -167,36 +180,35 @@ namespace sevenWD
 		void initAge1Graph();
 		void initAge2Graph();
 		void initAge3Graph();
-
-		template<typename T>
-		u8 pickCardIndex(T& _availableCards, u8& _numAvailableCard);
-
+		void initWonderDraft();
+		void refillDraftWonders();
+		void finishWonderDraft();
 		void pickCardAdnInitNode(CardNode& _node);
-	};
 
-	template<typename T>
-	u8 GameState::pickCardIndex(T& _availableCards, u8& _numAvailableCard)
-	{
-		u32 index = m_context->rand()() % _numAvailableCard;
-
-		u8 cardIndex = _availableCards[index];
-		std::swap(_availableCards[index], _availableCards[_numAvailableCard - 1]);
-		_numAvailableCard--;
-		return cardIndex;
-	}
-
-	namespace Helper
-	{
 		template<typename T>
-		T safeSub(T x, T y)
+		u8 pickCardIndex(T& _availableCards, u8& _numAvailableCard)
 		{
-			return x > y ? x - y : 0;
+			u32 index = m_context->rand()() % _numAvailableCard;
+
+			u8 cardIndex = _availableCards[index];
+			std::swap(_availableCards[index], _availableCards[_numAvailableCard - 1]);
+			_numAvailableCard--;
+			return cardIndex;
 		}
+	};
+ 
+ 	namespace Helper
+ 	{
+ 		template<typename T>
+ 		T safeSub(T x, T y)
+ 		{
+ 			return x > y ? x - y : 0;
+ 		}
 
-		bool isReplayWonder(Wonders _wonder);
+ 		bool isReplayWonder(Wonders _wonder);
 
-		const char* toString(ResourceType _type);
-		const char* toString(CardType _type);
-		const char* toString(ScienceSymbol _type);
-	}
-}
+ 		const char* toString(ResourceType _type);
+ 		const char* toString(CardType _type);
+ 		const char* toString(ScienceSymbol _type);
+ 	}
+ }
