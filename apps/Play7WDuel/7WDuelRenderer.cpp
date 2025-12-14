@@ -146,7 +146,11 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
     const float coinH = std::min(32.0f, std::max(16.0f, m_layout.resourceIconH + 4.0f));
     const float resourceH = m_layout.resourceIconH;
     const float chainingH = m_layout.chainingIconH;
-    const float wonderH = m_layout.wonderH * 0.6f;
+
+    // Make wonders larger in the player panel using persistent layout scale
+    const float panelWonderScale = m_layout.wonderPanelScale;
+    const float wonderH = m_layout.wonderH * 0.6f * panelWonderScale;
+
     const float scienceH = 32.0f;
 
     const float baseRowH = std::max({ headerTextH, coinH, resourceH, chainingH, wonderH, scienceH }) + 8.0f;
@@ -188,40 +192,26 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
             SDL_Texture* tex = GetResourceImage(res);
 
             // calculate icon width that fits perCell and looks reasonable
-            float iconW = std::min(m_layout.resourceIconW, perCell - 40.0f);
+            // allow icons up to layout size but don't force an excessively large margin;
+            // keep a small room for the number text by subtracting a modest value.
+            float iconW = std::min(m_layout.resourceIconW, perCell - 12.0f);
             iconW = std::max(12.0f, iconW);
             float iconH = iconW;
 
             // check bounds and break if no space
-            if (rx + iconW + 48.0f > innerX + innerW - margin) break;
+            if (rx + iconW + 24.0f > innerX + innerW - margin) break;
 
             float imgY = curY + (baseRowH - iconH) * 0.5f;
             m_renderer->DrawImage(tex, rx, imgY, iconW, iconH);
 
             // highlight resource icon if the player has a discount for this resource
-            // (draw a yellow outline around the icon)
             if (city.m_resourceDiscount[r])
             {
                 m_renderer->DrawRect(rx - 3.0f, imgY - 3.0f, iconW + 6.0f, iconH + 6.0f, Colors::Yellow);
             }
 
-            // primary production value
             int prodVal = city.m_production[r];
-
-            // determine weak-production applicable to this resource:
-            // - normal weak production applies to Wood/Clay/Stone (first)
-            // - rare weak production applies to Glass/Papyrus (second)
-            int weakVal = 0;
-            if (res == sevenWD::ResourceType::Wood || res == sevenWD::ResourceType::Clay || res == sevenWD::ResourceType::Stone)
-                weakVal = city.m_weakProduction.first;
-            else if (res == sevenWD::ResourceType::Glass || res == sevenWD::ResourceType::Papyrus)
-                weakVal = city.m_weakProduction.second;
-
-            // Compose display: primary production and optional weak suffix "(+N)" to match regular resource layout
-            std::string prodText = std::to_string(prodVal);
-
-            // value text vertically centered relative to row
-            m_renderer->DrawText(prodText, rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
+            m_renderer->DrawText(std::to_string(prodVal), rx + iconW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
 
             rx += perCell;
         }
@@ -279,17 +269,13 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         const float guildW = std::min(m_layout.cardW * 0.8f, 48.0f);
         const float guildH = guildW * (m_layout.cardH / m_layout.cardW);
 
-        // owned guilds are stored as bitfield in PlayerCity::m_ownedGuildCards
-        // find a representative guild card texture for each set bit
         if (m_state.m_context)
         {
             const auto& allGuilds = m_state.m_context->getAllGuildCards();
-            // We will iterate guild types (CardType) and draw if owned.
             for (u8 type = 0; type < u8(sevenWD::CardType::Count); ++type)
             {
                 if ((city.m_ownedGuildCards & (1u << type)) == 0) continue;
 
-                // find first guild card whose secondaryType matches this "type"
                 const sevenWD::Card* rep = nullptr;
                 for (const sevenWD::Card& c : allGuilds)
                 {
@@ -299,8 +285,6 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
                         break;
                     }
                 }
-
-                // fallback: if no representative found, skip
                 if (!rep) continue;
 
                 if (gx + guildW > maxX) break;
@@ -317,7 +301,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
     }
     curY += baseRowH + spacing;
 
-    // Row 6: Wonders - scaled to available width
+    // Row 6: Wonders - use fixed desired size and wrap to multiple rows rather than shrinking to fit
     {
         m_renderer->DrawText("Wonders:", innerX + margin, curY, Colors::Cyan);
         float wx = innerX + margin + 88.0f;
@@ -325,68 +309,96 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         if (unbuilt > 0)
         {
             float wondersAreaW = (innerX + innerW - margin) - wx;
-            float perW = (wondersAreaW - (unbuilt - 1) * 8.0f) / float(unbuilt);
-            float drawW = std::min(perW, m_layout.wonderW * 0.6f);
-            drawW = std::max(24.0f, drawW);
+            // desired item width (from layout + panel scale)
+            float desiredW = m_layout.wonderW * 0.6f * panelWonderScale;
+            desiredW = std::max(24.0f, desiredW);
+
+            // Compute how many items fit per row at desired size (wrap when needed)
+            int perRow = std::max(1, int(std::floor((wondersAreaW + spacing) / (desiredW + spacing))));
+            perRow = std::min(perRow, unbuilt); // don't claim more columns than items
+
+            // Compute actual drawW that fits evenly for perRow columns (keeps desired size if possible)
+            float drawW = desiredW;
+            float totalSpacing = float(perRow - 1) * spacing;
+            float maxDrawW = (wondersAreaW - totalSpacing) / float(perRow);
+            if (maxDrawW < drawW)
+                drawW = std::max(12.0f, maxDrawW); // shrink only if absolutely necessary
+
             float drawH = drawW * (m_layout.wonderH / m_layout.wonderW);
-            for (int w = 0; w < unbuilt; ++w)
+
+            // Number of rows required
+            int rows = int(std::ceil(float(unbuilt) / float(perRow)));
+
+            // Draw grid row-by-row, centering each row horizontally inside wondersAreaW
+            for (int r = 0; r < rows; ++r)
             {
-                if (wx + drawW > innerX + innerW - margin) break;
-                sevenWD::Wonders wonder = city.m_unbuildWonders[w];
-                float imgY = curY + (baseRowH - drawH) * 0.5f;
-                SDL_Texture* tex = GetWonderImage(wonder);
-                m_renderer->DrawImage(GetWonderImage(wonder), wx, imgY, drawW, drawH);
+                int startIndex = r * perRow;
+                int itemsThisRow = std::min(perRow, unbuilt - startIndex);
+                // center this row
+                float rowUsedW = itemsThisRow * drawW + (itemsThisRow - 1) * spacing;
+                float rowStartX = wx + (wondersAreaW - rowUsedW) * 0.5f;
 
-                // Hit detection: store both owner(player) and index to avoid
-                // ambiguity between the two panels.
-                if (ui && ui->mouseX >= int(wx) && ui->mouseX < int(wx + drawW) &&
-                    ui->mouseY >= int(imgY) && ui->mouseY < int(imgY + drawH))
+                for (int c = 0; c < itemsThisRow; ++c)
                 {
-                    ui->hoveredWonderPlayer = player;
-                    ui->hoveredWonderIndex = w;
-                }
+                    int idx = startIndex + c;
+                    float itemX = rowStartX + c * (drawW + spacing);
+                    float imgY = curY + ( (rows > 1 ? (drawH/2.0f) : (baseRowH - drawH) * 0.5f) );
+                    // For vertical placement ensure rows stack correctly - compute per-row Y offset
+                    float rowY = curY + r * (drawH + 6.0f); // small inter-row gap 6
 
-                // If user clicked the wonder -> toggle selection (only if it's the current player's panel)
-                // We set selection only for the current player (m_state.getCurrentPlayerTurn())
-                if (player == (int)m_state.getCurrentPlayerTurn() && ui)
-                {
-                    // Only consider clicks if the hovered wonder belongs to this panel.
-                    bool hoveredHere = (ui->hoveredWonderPlayer == player && ui->hoveredWonderIndex == w);
+                    sevenWD::Wonders wonder = city.m_unbuildWonders[idx];
+                    SDL_Texture* tex = GetWonderImage(wonder);
+                    m_renderer->DrawImage(tex ? tex : GetWonderImage(wonder), itemX, rowY, drawW, drawH);
 
-                    if (ui->leftClick && hoveredHere)
+                    // Hit detection and selection mapping unchanged (index is linear)
+                    if (ui && ui->mouseX >= int(itemX) && ui->mouseX < int(itemX + drawW) &&
+                        ui->mouseY >= int(rowY) && ui->mouseY < int(rowY + drawH))
                     {
-                        // toggle selection remembering owner + index
-                        if (ui->selectedWonderPlayer == player && ui->selectedWonderIndex == w)
+                        ui->hoveredWonderPlayer = player;
+                        ui->hoveredWonderIndex = idx;
+                    }
+
+                    if (player == (int)m_state.getCurrentPlayerTurn() && ui)
+                    {
+                        bool hoveredHere = (ui->hoveredWonderPlayer == player && ui->hoveredWonderIndex == idx);
+
+                        if (ui->leftClick && hoveredHere)
+                        {
+                            if (ui->selectedWonderPlayer == player && ui->selectedWonderIndex == idx)
+                            {
+                                ui->selectedWonderPlayer = -1;
+                                ui->selectedWonderIndex = -1;
+                            }
+                            else
+                            {
+                                ui->selectedWonderPlayer = player;
+                                ui->selectedWonderIndex = idx;
+                            }
+                        }
+
+                        if (ui->rightClick && ui->selectedWonderPlayer == player && ui->selectedWonderIndex != -1)
                         {
                             ui->selectedWonderPlayer = -1;
                             ui->selectedWonderIndex = -1;
                         }
-                        else
-                        {
-                            ui->selectedWonderPlayer = player;
-                            ui->selectedWonderIndex = w;
-                        }
                     }
 
-                    // Right click cancels selection only for this player's selection
-                    if (ui->rightClick && ui->selectedWonderPlayer == player && ui->selectedWonderIndex != -1)
+                    // outline if selected
+                    if (ui && ui->selectedWonderPlayer == player && ui->selectedWonderIndex == idx && player == (int)m_state.getCurrentPlayerTurn())
                     {
-                        ui->selectedWonderPlayer = -1;
-                        ui->selectedWonderIndex = -1;
+                        m_renderer->DrawRect(itemX - 4.0f, rowY - 4.0f, drawW + 8.0f, drawH + 8.0f, Colors::Green);
                     }
                 }
-
-                // If this wonder is selected draw an outline (only highlight visually; selection is stored in UIState if interactive)
-                if (ui && ui->selectedWonderPlayer == player && ui->selectedWonderIndex == w && player == (int)m_state.getCurrentPlayerTurn())
-                {
-                    m_renderer->DrawRect(wx - 4.0f, imgY - 4.0f, drawW + 8.0f, drawH + 8.0f, Colors::Green);
-                }
-
-                wx += drawW + 8;
             }
+
+            // advance curY by the height used by the wonder grid
+            curY += float(rows) * (drawH + 6.0f) + spacing;
+        }
+        else
+        {
+            curY += baseRowH + spacing;
         }
     }
-    curY += baseRowH + spacing;
 
     // Row 7: Science tokens owned (icons)
     {
@@ -1105,10 +1117,17 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                 float mh = m_uiPos.magnifiedH;
 
                 // enlarge background to leave space for optional title/cost area
+                // use persistent preview scale from layout so preview stays enlarged after draft
+                const float previewScale = m_layout.wonderPreviewScale;
                 const float topPad = 20.0f;
                 const float sidePad = 8.0f;
                 const float bottomPad = 12.0f;
-                m_renderer->DrawImage(GetBackgroundPanel(), mx - sidePad, my - topPad - sidePad, mw + sidePad * 2.0f, mh + topPad + bottomPad + sidePad);
+                // compute an expanded preview rect centered on the original magnified slot
+                float pw = mw * previewScale;
+                float ph = mh * previewScale;
+                float previewX = mx - (pw - mw) * 0.5f;
+                float previewY = my - (ph - mh) * 0.5f;
+                m_renderer->DrawImage(GetBackgroundPanel(), previewX - sidePad, previewY - topPad - sidePad, pw + sidePad * 2.0f, ph + topPad + bottomPad + sidePad);
 
                 // compute cost for current player to build this wonder
                 u32 cur = m_state.getCurrentPlayerTurn();
@@ -1118,7 +1137,7 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
 
                 // draw cost text above magnified wonder
                 std::string costText = std::string("Cost: ") + std::to_string(int(cost));
-                m_renderer->DrawText(costText, mx + 8.0f, my - topPad + 8.0f, Colors::Yellow);
+                m_renderer->DrawText(costText, previewX + 8.0f, previewY - topPad + 8.0f, Colors::Yellow);
 
                 // draw wonder image (use wonder-specific image loader)
                 SDL_Texture* wtex = GetWonderImage(wonder);
@@ -1129,18 +1148,18 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                         ? (m_layout.wonderW / m_layout.wonderH)
                         : (m_layout.cardW / m_layout.cardH);
 
-                    // fit into mw x mh while preserving aspect
-                    float targetW = std::min(mw, mh * aspect);
+                    // fit into expanded preview rect (pw x ph) while preserving aspect
+                    float targetW = std::min(pw, ph * aspect);
                     float targetH = targetW / aspect;
-                    if (targetH > mh) // fallback if numeric issues
+                    if (targetH > ph) // fallback if numeric issues
                     {
-                        targetH = mh;
+                        targetH = ph;
                         targetW = targetH * aspect;
                     }
 
-                    // center inside the magnified area
-                    float drawX = mx + (mw - targetW) * 0.5f;
-                    float drawY = my + (mh - targetH) * 0.5f;
+                    // center inside the expanded preview rect
+                    float drawX = previewX + (pw - targetW) * 0.5f;
+                    float drawY = previewY + (ph - targetH) * 0.5f;
 
                     m_renderer->DrawImage(wtex, drawX, drawY, targetW, targetH);
                 }

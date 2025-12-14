@@ -26,7 +26,7 @@ public:
     struct UIPosition
     {
         float playerPanelX0 = 50.0f; // Player 1 panel X position
-        float playerPanelY = 500.0f; // Player panel Y position
+        float playerPanelY = 400.0f; // Player panel Y position
         float playerPanelX1 = 1270.0f; // Player 2 panel X position
 
         float pyramidBaseX = 900.0f; // Screen center X for pyramid (adjustable)
@@ -121,8 +121,14 @@ public:
         float cardW = 72.0f;
         float cardH = 104.0f;
 
-        float wonderW = 96.0f;
-        float wonderH = 56.0f;
+        // Increased wonder preview size by ~25%
+        float wonderW = 120.0f;
+        float wonderH = 70.0f;
+        // Per-purpose wonder scale factors so scaling is stable outside the draft
+        // - wonderPanelScale: applied to wonders shown inside the player panels
+        // - wonderPreviewScale: applied to the magnified wonder preview
+        float wonderPanelScale = 1.3f;    // ~30% bigger in player panel
+        float wonderPreviewScale = 1.25f; // ~25% larger magnified preview
 
         float tokenW = 60.0f;
         float tokenH = 60.0f;
@@ -131,8 +137,8 @@ public:
         float playerPanelH = 200.0f;
         float padding = 10.0f;
 
-        float resourceIconW = 24.0f;
-        float resourceIconH = 24.0f;
+        float resourceIconW = 28.0f;
+        float resourceIconH = 28.0f;
 
         float chainingIconW = 20.0f;
         float chainingIconH = 20.0f;
@@ -141,8 +147,8 @@ public:
         float yellowCardIconH = 28.0f;
 
         // weak-production icons
-        float weakIconW = 20.0f;
-        float weakIconH = 20.0f;
+        float weakIconW = 28.0f;
+        float weakIconH = 28.0f;
 
         float militaryTrackLength = 700.0f;
     };
