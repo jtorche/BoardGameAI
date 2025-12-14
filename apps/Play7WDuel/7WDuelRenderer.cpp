@@ -851,46 +851,102 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
 
     const sevenWD::GameController* gc = ui ? ui->gameController : nullptr;
 
-    for (int i = 0; i < m_state.m_numScienceToken; ++i)
+    // detect controller states that change token interaction mode
+    bool isPickState = gc && gc->m_state == sevenWD::GameController::State::PickScienceToken;
+    bool isGreatLibraryState = gc && (gc->m_state == sevenWD::GameController::State::GreatLibraryToken ||
+                                      gc->m_state == sevenWD::GameController::State::GreatLibraryTokenThenReplay);
+
+    // Normal board tokens (when controller asks for pick from the board)
+    if (isPickState || !isGreatLibraryState)
     {
-        const sevenWD::Card& card = m_state.getPlayableScienceToken(i);
-        sevenWD::ScienceToken type = (sevenWD::ScienceToken)card.getSecondaryType();
-
-        float tx = x + i * (m_layout.tokenW + 10.0f);
-        float tw = m_layout.tokenW;
-        float th = m_layout.tokenH;
-
-        // draw token image
-        m_renderer->DrawImage(
-            GetScienceTokenImage(type),
-            tx,
-            y,
-            tw,
-            th
-        );
-
-        // interactive handling: hover + pick when controller asks for token selection
-        if (ui)
+        for (int i = 0; i < m_state.m_numScienceToken; ++i)
         {
-            if (ui->mouseX >= int(tx) && ui->mouseX < int(tx + tw) &&
-                ui->mouseY >= int(y) && ui->mouseY < int(y + th))
+            const sevenWD::Card& card = m_state.getPlayableScienceToken(i);
+            sevenWD::ScienceToken type = (sevenWD::ScienceToken)card.getSecondaryType();
+
+            float tx = x + i * (m_layout.tokenW + 10.0f);
+            float tw = m_layout.tokenW;
+            float th = m_layout.tokenH;
+
+            // draw token image
+            m_renderer->DrawImage(
+                GetScienceTokenImage(type),
+                tx,
+                y,
+                tw,
+                th
+            );
+
+            // interactive handling: hover + pick when controller asks for token selection
+            if (ui)
             {
-                ui->hoveredScienceToken = i;
-                // highlight hovered token
-                m_renderer->DrawRect(tx - 4.0f, y - 4.0f, tw + 8.0f, th + 8.0f, Colors::Yellow);
-
-                // If the controller is in a token-picking state (or app wants token picking)
-                // allow left click to request a ScienceToken move.
-                if (ui->leftClick)
+                if (ui->mouseX >= int(tx) && ui->mouseX < int(tx + tw) &&
+                    ui->mouseY >= int(y) && ui->mouseY < int(y + th))
                 {
-                    sevenWD::Move mv;
-                    mv.playableCard = u8(i); // token index on the board
-                    mv.action = sevenWD::Move::Action::ScienceToken;
-                    mv.wonderIndex = u8(-1);
-                    mv.additionalId = u8(-1);
+                    ui->hoveredScienceToken = i;
+                    // highlight hovered token
+                    m_renderer->DrawRect(tx - 4.0f, y - 4.0f, tw + 8.0f, th + 8.0f, Colors::Yellow);
 
-                    ui->requestedMove = mv;
-                    ui->moveRequested = true;
+                    // If the controller is in a token-picking state allow left click to request a ScienceToken move.
+                    if (isPickState && ui->leftClick)
+                    {
+                        sevenWD::Move mv;
+                        mv.playableCard = u8(i); // token index on the board
+                        mv.action = sevenWD::Move::Action::ScienceToken;
+                        mv.wonderIndex = u8(-1);
+                        mv.additionalId = u8(-1);
+
+                        ui->requestedMove = mv;
+                        ui->moveRequested = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Great Library draft tokens (presented when GreatLibrary wonder grants a choice)
+    if (isGreatLibraryState)
+    {
+        auto draft = m_state.getGreatLibraryDraft(); // 3 tokens
+        // draw them in a tighter group centered at x
+        const int count = 3;
+        const float spacing = 12.0f;
+        float totalW = count * m_layout.tokenW + (count - 1) * spacing;
+        float startX = x - totalW * 0.5f;
+
+        for (int i = 0; i < count; ++i)
+        {
+            sevenWD::ScienceToken token = draft[i];
+            float tx = startX + i * (m_layout.tokenW + spacing);
+            float tw = m_layout.tokenW;
+            float th = m_layout.tokenH;
+
+            m_renderer->DrawImage(GetScienceTokenImage(token), tx, y, tw, th);
+
+            if (ui)
+            {
+                if (ui->mouseX >= int(tx) && ui->mouseX < int(tx + tw) &&
+                    ui->mouseY >= int(y) && ui->mouseY < int(y + th))
+                {
+                    ui->hoveredScienceToken = i;
+                    m_renderer->DrawRect(tx - 4.0f, y - 4.0f, tw + 8.0f, th + 8.0f, Colors::Yellow);
+
+                    // clicking selects the drafted token. GameController expects Move::ScienceToken
+                    // with additionalId == cardId of the chosen science token.
+                    if (ui->leftClick)
+                    {
+                        sevenWD::Move mv{};
+                        mv.action = sevenWD::Move::Action::ScienceToken;
+                        mv.playableCard = u8(-1);
+                        // map token enum -> card id in GameContext
+                        if (m_state.m_context)
+                            mv.additionalId = m_state.m_context->getScienceToken(token).getId();
+                        else
+                            mv.additionalId = u8(-1);
+
+                        ui->requestedMove = mv;
+                        ui->moveRequested = true;
+                    }
                 }
             }
         }
@@ -958,7 +1014,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
         for (u32 i = 0; i < m_state.m_numPlayedAgeCards; ++i)
             if (m_state.m_playedAgeCards[i] == ageId) return true;
         return false;
-    };
+        };
 
     // Build quick lookup: nodeIndex -> playableIndex (index into m_playableCards) or -1
     std::vector<int> playableIndexOfNode(graph.size(), -1);
@@ -1038,10 +1094,10 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
             if (ui && ui->selectedWonderIndex >= 0 &&
                 ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn() &&
                 isPlayable)
-             {
-                 // draw subtle green hint on top
-                 m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
-             }
+            {
+                // draw subtle green hint on top
+                m_renderer->DrawRect(x - 6.0f, y - 6.0f, m_layout.cardW + 12.0f, m_layout.cardH + 12.0f, Colors::Green);
+            }
 
             // NEW: selection / double-click logic:
             int playableIdx = playableIndexOfNode[nodeIndex];
@@ -1058,59 +1114,59 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                     if (ui->selectedNode == int(nodeIndex) &&
                         m_lastClickedNode == int(nodeIndex) &&
                         (now - m_lastClickTime) <= std::chrono::milliseconds(m_doubleClickMs))
-                     {
+                    {
                         // confirmed action: build wonder if the current player's wonder is selected, otherwise pick
                         if (ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn())
-                         {
-                             sevenWD::Move mv;
-                             mv.playableCard = u8(playableIdx);
-                             mv.action = sevenWD::Move::Action::BuildWonder;
-                             mv.wonderIndex = u8(ui->selectedWonderIndex);
-                             mv.additionalId = u8(-1);
+                        {
+                            sevenWD::Move mv;
+                            mv.playableCard = u8(playableIdx);
+                            mv.action = sevenWD::Move::Action::BuildWonder;
+                            mv.wonderIndex = u8(ui->selectedWonderIndex);
+                            mv.additionalId = u8(-1);
 
-                             ui->requestedMove = mv;
-                             ui->moveRequested = true;
-                             ui->selectedWonderPlayer = -1;
-                             ui->selectedWonderIndex = -1;
-                         }
-                         else
-                         {
-                             sevenWD::Move mv;
-                             mv.playableCard = u8(playableIdx);
-                             mv.action = sevenWD::Move::Action::Pick;
-                             mv.wonderIndex = u8(-1);
-                             mv.additionalId = u8(-1);
+                            ui->requestedMove = mv;
+                            ui->moveRequested = true;
+                            ui->selectedWonderPlayer = -1;
+                            ui->selectedWonderIndex = -1;
+                        }
+                        else
+                        {
+                            sevenWD::Move mv;
+                            mv.playableCard = u8(playableIdx);
+                            mv.action = sevenWD::Move::Action::Pick;
+                            mv.wonderIndex = u8(-1);
+                            mv.additionalId = u8(-1);
 
-                             ui->requestedMove = mv;
-                             ui->moveRequested = true;
-                         }
+                            ui->requestedMove = mv;
+                            ui->moveRequested = true;
+                        }
 
                         // clear selection after confirming
                         ui->selectedNode = -1;
                         m_lastClickedNode = -1;
                         m_lastClickTime = std::chrono::steady_clock::time_point::min();
-                     }
-                     else
-                     {
+                    }
+                    else
+                    {
                         // first click -> select node (highlight in red)
                         ui->selectedNode = int(nodeIndex);
                         m_lastClickedNode = int(nodeIndex);
                         m_lastClickTime = now;
-                     }
+                    }
                 }
                 // allow burning on right-click if not selecting and no wonder selected by current player
                 else if (ui->rightClick && ui->hoveredPlayableIndex == playableIdx &&
-                         !(ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn()))
-                 {
-                     sevenWD::Move mv;
-                     mv.playableCard = u8(playableIdx);
-                     mv.action = sevenWD::Move::Action::Burn;
-                     mv.wonderIndex = u8(-1);
-                     mv.additionalId = u8(-1);
+                    !(ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn()))
+                {
+                    sevenWD::Move mv;
+                    mv.playableCard = u8(playableIdx);
+                    mv.action = sevenWD::Move::Action::Burn;
+                    mv.wonderIndex = u8(-1);
+                    mv.additionalId = u8(-1);
 
-                     ui->requestedMove = mv;
-                     ui->moveRequested = true;
-                 }
+                    ui->requestedMove = mv;
+                    ui->moveRequested = true;
+                }
             }
         }
         // Hidden node: decide back image from node flags + current age (node.m_cardId may be invalid)
@@ -1127,67 +1183,67 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
 
 void SevenWDuelRenderer::drawWonderDraft(UIState* ui)
 {
-	u8 count = m_state.getNumDraftableWonders();
-	if (count == 0)
-		return;
+    u8 count = m_state.getNumDraftableWonders();
+    if (count == 0)
+        return;
 
-	// Arrange drafted wonders in a 2x2 grid (columns fixed to 2) so each card can be larger.
-	const int cols = 2;
-	const int rows = (count + cols - 1) / cols;
+    // Arrange drafted wonders in a 2x2 grid (columns fixed to 2) so each card can be larger.
+    const int cols = 2;
+    const int rows = (count + cols - 1) / cols;
 
-	// Card scale and spacing come from UIPosition so the grid is adjustable at runtime.
-	const float cardW = m_layout.wonderW * m_uiPos.wonderDraftCardScale;
-	const float cardH = m_layout.wonderH * m_uiPos.wonderDraftCardScale;
-	const float spacing = m_uiPos.wonderDraftSpacing;
+    // Card scale and spacing come from UIPosition so the grid is adjustable at runtime.
+    const float cardW = m_layout.wonderW * m_uiPos.wonderDraftCardScale;
+    const float cardH = m_layout.wonderH * m_uiPos.wonderDraftCardScale;
+    const float spacing = m_uiPos.wonderDraftSpacing;
 
-	// Compute total grid size and top-left origin
-	const float totalWidth = cols * cardW + (cols - 1) * spacing;
-	const float totalHeight = rows * cardH + (rows - 1) * spacing;
-	const float startX = m_uiPos.wonderDraftBaseX - totalWidth * 0.5f;
-	const float startY = m_uiPos.wonderDraftBaseY - totalHeight * 0.5f;
+    // Compute total grid size and top-left origin
+    const float totalWidth = cols * cardW + (cols - 1) * spacing;
+    const float totalHeight = rows * cardH + (rows - 1) * spacing;
+    const float startX = m_uiPos.wonderDraftBaseX - totalWidth * 0.5f;
+    const float startY = m_uiPos.wonderDraftBaseY - totalHeight * 0.5f;
 
-	// Title placed above the grid
-	std::string title = "Wonder Draft - Player " + std::to_string(m_state.getCurrentPlayerTurn() + 1);
-	m_renderer->DrawText(title, startX, startY - m_uiPos.wonderDraftTitleOffset, Colors::Yellow);
-	std::string round = "Round " + std::to_string(m_state.getCurrentWonderDraftRound() + 1) + "/2";
-	m_renderer->DrawText(round, startX, startY - m_uiPos.wonderDraftRoundOffset, Colors::White);
+    // Title placed above the grid
+    std::string title = "Wonder Draft - Player " + std::to_string(m_state.getCurrentPlayerTurn() + 1);
+    m_renderer->DrawText(title, startX, startY - m_uiPos.wonderDraftTitleOffset, Colors::Yellow);
+    std::string round = "Round " + std::to_string(m_state.getCurrentWonderDraftRound() + 1) + "/2";
+    m_renderer->DrawText(round, startX, startY - m_uiPos.wonderDraftRoundOffset, Colors::White);
 
-	const bool canRequestMove = ui && ui->gameController && ui->gameController->m_state == sevenWD::GameController::State::DraftWonder;
+    const bool canRequestMove = ui && ui->gameController && ui->gameController->m_state == sevenWD::GameController::State::DraftWonder;
 
-	for (u8 i = 0; i < count; ++i)
-	{
-		int r = i / cols;
-		int c = i % cols;
+    for (u8 i = 0; i < count; ++i)
+    {
+        int r = i / cols;
+        int c = i % cols;
 
-		float x = startX + c * (cardW + spacing);
-		float y = startY + r * (cardH + spacing);
-		SDL_Rect rect{ int(x), int(y), int(cardW), int(cardH) };
+        float x = startX + c * (cardW + spacing);
+        float y = startY + r * (cardH + spacing);
+        SDL_Rect rect{ int(x), int(y), int(cardW), int(cardH) };
 
-		bool hovered = ui &&
-			ui->mouseX >= rect.x && ui->mouseX <= rect.x + rect.w &&
-			ui->mouseY >= rect.y && ui->mouseY <= rect.y + rect.h;
+        bool hovered = ui &&
+            ui->mouseX >= rect.x && ui->mouseX <= rect.x + rect.w &&
+            ui->mouseY >= rect.y && ui->mouseY <= rect.y + rect.h;
 
-		if (hovered && ui)
-		{
-			ui->hoveredWonder = i;
-			m_renderer->DrawRect(x - 6.0f, y - 6.0f, cardW + 12.0f, cardH + 12.0f, Colors::Yellow);
+        if (hovered && ui)
+        {
+            ui->hoveredWonder = i;
+            m_renderer->DrawRect(x - 6.0f, y - 6.0f, cardW + 12.0f, cardH + 12.0f, Colors::Yellow);
 
-			if (ui->leftClick && canRequestMove)
-			{
-				sevenWD::Move mv{};
-				mv.action = sevenWD::Move::Action::DraftWonder;
-				mv.playableCard = i;
-				ui->requestedMove = mv;
-				ui->moveRequested = true;
-			}
-		}
+            if (ui->leftClick && canRequestMove)
+            {
+                sevenWD::Move mv{};
+                mv.action = sevenWD::Move::Action::DraftWonder;
+                mv.playableCard = i;
+                ui->requestedMove = mv;
+                ui->moveRequested = true;
+            }
+        }
 
-		SDL_Texture* tex = GetWonderImage(m_state.getDraftableWonder(i));
-		if (tex)
-			m_renderer->DrawImage(tex, x, y, cardW, cardH);
-		else
-			m_renderer->DrawText("Wonder", x + 12.0f, y + cardH * 0.5f, Colors::White);
-	}
+        SDL_Texture* tex = GetWonderImage(m_state.getDraftableWonder(i));
+        if (tex)
+            m_renderer->DrawImage(tex, x, y, cardW, cardH);
+        else
+            m_renderer->DrawText("Wonder", x + 12.0f, y + cardH * 0.5f, Colors::White);
+    }
 }
 
 // ---------------------------------------------------------------------
