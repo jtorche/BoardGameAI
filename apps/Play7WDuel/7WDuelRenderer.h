@@ -205,7 +205,6 @@ private:
     SDL_Texture* GetCardBackImage(const sevenWD::Card& card);
     SDL_Texture* GetCardBackImageForNode(bool isGuild, u32 age);
     // Keep a generic fallback overload for existing call sites if needed.
-    SDL_Texture* GetCardBackImage();
     SDL_Texture* GetWonderImage(sevenWD::Wonders wonder);
     SDL_Texture* GetScienceTokenImage(sevenWD::ScienceToken token);
     SDL_Texture* GetCoinImage();

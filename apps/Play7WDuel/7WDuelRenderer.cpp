@@ -150,10 +150,14 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
     // Make wonders larger in the player panel using persistent layout scale
     const float panelWonderScale = m_layout.wonderPanelScale;
     const float wonderH = m_layout.wonderH * 0.6f * panelWonderScale;
-
     const float scienceH = 32.0f;
 
-    const float baseRowH = std::max({ headerTextH, coinH, resourceH, chainingH, wonderH, scienceH }) + 8.0f;
+    // Prevent the large wonder icon size from inflating the spacing used for
+    // the top rows (player name, gold, prod, etc). Compute a "header" row
+    // height used for those rows and reserve a separate height for the
+    // wonders row(s) later.
+    const float headerRowH = std::max({ headerTextH, coinH, resourceH, chainingH, scienceH }) + 8.0f;
+    const float baseRowH = headerRowH; // used for rows before Wonders
 
     // start Y inside panel (top padding)
     float curY = y + margin;
@@ -247,16 +251,25 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         m_renderer->DrawText("Chain:", innerX + margin, curY, Colors::Cyan);
         float cx = innerX + margin + 68.0f;
         float maxX = innerX + innerW - margin;
-        for (u8 s = 0; s < u8(sevenWD::ChainingSymbol::Count); ++s)
+        // Skip ChainingSymbol::None (value 0) to avoid drawing a default/generic image
+        for (u8 s = 1; s < u8(sevenWD::ChainingSymbol::Count); ++s)
         {
-            if ((city.m_chainingSymbols & (1u << s)) != 0)
+            if ((city.m_chainingSymbols & (1u << s)) == 0) continue;
+            if (cx + m_layout.chainingIconW > maxX) break;
+
+            sevenWD::ChainingSymbol sym = sevenWD::ChainingSymbol(s);
+            SDL_Texture* symTex = GetChainingSymbolImage(sym);
+
+            // If no image exists for this symbol, skip drawing it (prevents a generic/incorrect icon)
+            if (!symTex)
             {
-                if (cx + m_layout.chainingIconW > maxX) break;
-                SDL_Texture* symTex = GetChainingSymbolImage(sevenWD::ChainingSymbol(s));
-                float imgY = curY + (baseRowH - m_layout.chainingIconH) * 0.5f;
-                m_renderer->DrawImage(symTex, cx, imgY, m_layout.chainingIconW, m_layout.chainingIconH);
                 cx += m_layout.chainingIconW + 8.0f;
+                continue;
             }
+
+            float imgY = curY + (baseRowH - m_layout.chainingIconH) * 0.5f;
+            m_renderer->DrawImage(symTex, cx, imgY, m_layout.chainingIconW, m_layout.chainingIconH);
+            cx += m_layout.chainingIconW + 8.0f;
         }
     }
     curY += baseRowH + spacing;
@@ -599,28 +612,6 @@ float SevenWDuelRenderer::drawPlayerCityCardGrid(const std::vector<const sevenWD
     return std::max(0, rows) * rowHeight - spacing;
 }
 
-void SevenWDuelRenderer::drawCityCardSprite(const sevenWD::Card& card, float x, float y, float w, float h)
-{
-    SDL_Texture* tex = nullptr;
-    if (card.getType() == sevenWD::CardType::Wonder)
-    {
-        tex = GetWonderImage(static_cast<sevenWD::Wonders>(card.getSecondaryType()));
-    }
-    else if (card.getType() == sevenWD::CardType::ScienceToken)
-    {
-        tex = GetScienceTokenImage(static_cast<sevenWD::ScienceToken>(card.getSecondaryType()));
-    }
-    else
-    {
-        tex = GetCardImage(card);
-    }
-
-    if (tex)
-        m_renderer->DrawImage(tex, x, y, w, h);
-    else
-        m_renderer->DrawText("[missing]", x, y, Colors::White);
-}
-
 const char* SevenWDuelRenderer::cardTypeToString(sevenWD::CardType type) const
 {
     switch (type)
@@ -636,6 +627,70 @@ const char* SevenWDuelRenderer::cardTypeToString(sevenWD::CardType type) const
     case sevenWD::CardType::ScienceToken: return "Science Tokens";
     default: return "Cards";
     }
+}
+
+void SevenWDuelRenderer::drawCityCardSprite(const sevenWD::Card& card, float x, float y, float w, float h)
+{
+    SDL_Texture* tex = nullptr;
+    bool isWonder = false;
+    bool isScienceToken = false;
+
+    if (card.getType() == sevenWD::CardType::Wonder)
+    {
+        tex = GetWonderImage(static_cast<sevenWD::Wonders>(card.getSecondaryType()));
+        isWonder = true;
+    }
+    else if (card.getType() == sevenWD::CardType::ScienceToken)
+    {
+        tex = GetScienceTokenImage(static_cast<sevenWD::ScienceToken>(card.getSecondaryType()));
+        isScienceToken = true;
+    }
+    else
+    {
+        tex = GetCardImage(card);
+    }
+
+    if (!tex)
+    {
+        m_renderer->DrawText("[missing]", x, y, Colors::White);
+        return;
+    }
+
+    // Preserve appropriate aspect ratio depending on the asset type.
+    float aspect = 0.0f;
+    if (isWonder)
+    {
+        aspect = (m_layout.wonderW > 0.0f && m_layout.wonderH > 0.0f)
+                 ? (m_layout.wonderW / m_layout.wonderH)
+                 : (m_layout.cardW / m_layout.cardH);
+    }
+    else if (isScienceToken)
+    {
+        aspect = (m_layout.tokenW > 0.0f && m_layout.tokenH > 0.0f)
+                 ? (m_layout.tokenW / m_layout.tokenH)
+                 : (m_layout.cardW / m_layout.cardH);
+    }
+    else
+    {
+        aspect = (m_layout.cardW > 0.0f && m_layout.cardH > 0.0f)
+                 ? (m_layout.cardW / m_layout.cardH)
+                 : 1.0f;
+    }
+
+    // Fit texture into the provided cell (w x h) while preserving aspect.
+    float targetW = w;
+    float targetH = (aspect > 0.0f) ? (targetW / aspect) : h;
+    if (targetH > h)
+    {
+        targetH = h;
+        targetW = (aspect > 0.0f) ? (targetH * aspect) : w;
+    }
+
+    // Center inside cell
+    float drawX = x + (w - targetW) * 0.5f;
+    float drawY = y + (h - targetH) * 0.5f;
+
+    m_renderer->DrawImage(tex, drawX, drawY, targetW, targetH);
 }
 
 // ---------------------------------------------------------------------
@@ -1398,7 +1453,24 @@ SDL_Texture* SevenWDuelRenderer::GetResourceImage(sevenWD::ResourceType resource
 
 SDL_Texture* SevenWDuelRenderer::GetChainingSymbolImage(sevenWD::ChainingSymbol symbol)
 {
-    return m_renderer->LoadImage("assets/chaining/symbol.png");
+    // Do not provide a default/generic image for ChainingSymbol::None.
+    if (symbol == sevenWD::ChainingSymbol::None)
+        return nullptr;
+
+    // Map enum -> asset name (names correspond to enum values starting at Jar)
+    static const char* names[] = {
+        "Jar", "Barrel", "Mask", "Bank", "Sun", "WaterDrop", "GreekPillar",
+        "Moon", "Target", "Helmet", "Horseshoe", "Sword", "Tower", "Harp", "Gear",
+        "Book", "Lamp"
+    };
+
+    int idx = int(symbol) - 1; // subtract 1 because array starts at Jar
+    if (idx < 0 || idx >= int(sevenWD::ChainingSymbol::Count) - 1)
+        return nullptr;
+
+    std::string path = std::string("assets/chaining/") + names[idx] + ".png";
+    SDL_Texture* tex = m_renderer->LoadImage(path.c_str());
+    return tex;
 }
 
 // New weak icons
