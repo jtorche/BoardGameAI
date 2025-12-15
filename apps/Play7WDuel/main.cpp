@@ -57,8 +57,8 @@ int main(int argc, char** argv)
     if (ownedAI)
     {
         // configure loaded AI
-        ownedAI->m_depth = 10;
-        ownedAI->m_numSimu = 50;
+        ownedAI->m_depth = 15;
+        ownedAI->m_numSimu = 200;
         activeAI = ownedAI.get();
         std::cout << "Loaded AI: " << activeAI->getName() << " (gen " << loadedGen << ")\n";
     }
@@ -98,6 +98,9 @@ int main(int argc, char** argv)
     SDL_GetMouseState(&mx, &my);
     uiState.mouseX = static_cast<int>(mx + 0.5f);
     uiState.mouseY = static_cast<int>(my + 0.5f);
+
+    // Toggle: when true only player 1 may interact with mouse; player 2 moves must be triggered by space (AI).
+    bool onlyPlayer1Mouse = false;
 
     // Helper to check if the controller is in a terminal (win) state
     auto isGameOver = [&gameController]() -> bool
@@ -253,30 +256,39 @@ int main(int argc, char** argv)
             {
                 if (e.key.key == SDLK_SPACE)
                 {
-                    if (isGameOver())
+                    // When "Only Player1 Mouse" is enabled, allow the space-bar AI action
+                    // only when it's player 2's turn. Otherwise space triggers AI for any player.
+                    if (onlyPlayer1Mouse && gameController.m_gameState.getCurrentPlayerTurn() != 1)
                     {
-                        std::cout << "Game has ended. No moves can be played.\n";
+                        std::cout << "Space (AI) is disabled for player 1 when Only Player1 Mouse is ON. Press space when it's player 2's turn.\n";
                     }
                     else
                     {
-                        std::vector<sevenWD::Move> moves;
-                        gameController.enumerateMoves(moves);
-                        if (!moves.empty())
+                        if (isGameOver())
                         {
-                            // Use the active AI to pick the move
-                            sevenWD::Move chosen = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
-
-                            std::cout << "AI (" << activeAI->getName() << ") playing move: ";
-                            gameController.printMove(std::cout, chosen) << "\n";
-
-                            // Execute move. play(...) returns true if the game ended as a result.
-                            bool ended = playMove(chosen);
-                            if (ended)
-                                std::cout << "Game ended after this move.\n";
+                            std::cout << "Game has ended. No moves can be played.\n";
                         }
                         else
                         {
-                            std::cout << "No legal moves to play\n";
+                            std::vector<sevenWD::Move> moves;
+                            gameController.enumerateMoves(moves);
+                            if (!moves.empty())
+                            {
+                                // Use the active AI to pick the move
+                                sevenWD::Move chosen = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
+
+                                std::cout << "AI (" << activeAI->getName() << ") playing move: ";
+                                gameController.printMove(std::cout, chosen) << "\n";
+
+                                // Execute move. play(...) returns true if the game ended as a result.
+                                bool ended = playMove(chosen);
+                                if (ended)
+                                    std::cout << "Game ended after this move.\n";
+                            }
+                            else
+                            {
+                                std::cout << "No legal moves to play\n";
+                            }
                         }
                     }
                 }
@@ -335,59 +347,110 @@ int main(int argc, char** argv)
         // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
         ui.draw(&uiState, &uiGameState);
 
+        // --------------------------
+        // Draw toggle button + handle click
+        // --------------------------
+        // Button placement (top-right area)
+        const int bx = 1600;
+        const int by = 0;
+        const int bw = 320;
+        const int bh = 36;
+
+        bool btnHovered = uiState.mouseX >= bx && uiState.mouseX <= bx + bw &&
+                          uiState.mouseY >= by && uiState.mouseY <= by + bh;
+
+        // Draw button background using RendererInterface (avoid direct SDL calls)
+        SDL_Color bgColor = onlyPlayer1Mouse ? SDL_Color{ 24, 128, 24, 220 } : SDL_Color{ 48, 48, 48, 200 };
+        // Fill rect by drawing horizontal lines via RendererInterface::DrawLine
+        for (int yy = by; yy < by + bh; ++yy)
+        {
+            renderer.DrawLine(float(bx), float(yy), float(bx + bw), float(yy), bgColor);
+        }
+
+        // Draw border using RendererInterface
+        SDL_Color borderColor = btnHovered ? SDL_Color{ 255, 215, 0, 255 } : SDL_Color{ 200, 200, 200, 255 };
+        renderer.DrawRect(float(bx), float(by), float(bw), float(bh), borderColor);
+
+        // label
+        std::string label = std::string("Only Player1 Mouse: ") + (onlyPlayer1Mouse ? "ON" : "OFF");
+        renderer.DrawText(label, float(bx + 10), float(by + 8), SevenWDuelRenderer::Colors::White);
+
+        // Handle toggle click — consume the click so it won't trigger game moves
+        if (uiState.leftClick && btnHovered)
+        {
+            onlyPlayer1Mouse = !onlyPlayer1Mouse;
+            std::cout << "Only Player1 Mouse set to " << (onlyPlayer1Mouse ? "ON" : "OFF") << "\n";
+
+            // Consume the click so renderer/game doesn't also act on it
+            uiState.moveRequested = false;
+            uiState.leftClick = false;
+            uiState.rightClick = false;
+        }
+
         // If renderer requested a move, validate it against legal moves before executing.
         if (uiState.moveRequested)
         {
-            if (isGameOver())
+            // If option enabled and current player is player 2, ignore mouse moves and inform.
+            if (onlyPlayer1Mouse && gameController.m_gameState.getCurrentPlayerTurn() == 1)
             {
-                // If game already ended ignore any requested moves and inform.
-                std::cout << "Ignoring requested move: game already ended.\n";
+                std::cout << "Mouse moves are disabled for player 2 (only player 1 may use the mouse). Ignoring requested move.\n";
                 uiState.moveRequested = false;
                 uiState.leftClick = false;
                 uiState.rightClick = false;
             }
             else
             {
-                std::vector<sevenWD::Move> legalMoves;
-                gameController.enumerateMoves(legalMoves);
-
-                auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
-                    return a.action == b.action &&
-                           a.playableCard == b.playableCard &&
-                           a.wonderIndex == b.wonderIndex &&
-                           a.additionalId == b.additionalId;
-                };
-
-                bool valid = false;
-                for (const auto& m : legalMoves)
+                if (isGameOver())
                 {
-                    if (moveEqual(m, uiState.requestedMove))
-                    {
-                        valid = true;
-                        break;
-                    }
-                }
-
-                if (valid)
-                {
-                    bool end = playMove(uiState.requestedMove);
-                    (void)end;
-
-                    // After a move is played, reset transient UI selection
-                    uiState.selectedWonder = -1;
+                    // If game already ended ignore any requested moves and inform.
+                    std::cout << "Ignoring requested move: game already ended.\n";
+                    uiState.moveRequested = false;
+                    uiState.leftClick = false;
+                    uiState.rightClick = false;
                 }
                 else
                 {
-                    std::cout << "Illegal move attempted: ";
-                    gameController.printMove(std::cout, uiState.requestedMove) << "\n";
+                    std::vector<sevenWD::Move> legalMoves;
+                    gameController.enumerateMoves(legalMoves);
+
+                    auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
+                        return a.action == b.action &&
+                               a.playableCard == b.playableCard &&
+                               a.wonderIndex == b.wonderIndex &&
+                               a.additionalId == b.additionalId;
+                    };
+
+                    bool valid = false;
+                    for (const auto& m : legalMoves)
+                    {
+                        if (moveEqual(m, uiState.requestedMove))
+                        {
+                            valid = true;
+                            break;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        bool end = playMove(uiState.requestedMove);
+                        (void)end;
+
+                        // After a move is played, reset transient UI selection
+                        uiState.selectedWonder = -1;
+                    }
+                    else
+                    {
+                        std::cout << "Illegal move attempted: ";
+                        gameController.printMove(std::cout, uiState.requestedMove) << "\n";
+                    }
+
+                    // Consume the requested move so it won't be processed again
+                    uiState.moveRequested = false;
+
+                    // Clear transient clicks to avoid double-processing in same frame
+                    uiState.leftClick = false;
+                    uiState.rightClick = false;
                 }
-
-                // Consume the requested move so it won't be processed again
-                uiState.moveRequested = false;
-
-                // Clear transient clicks to avoid double-processing in same frame
-                uiState.leftClick = false;
-                uiState.rightClick = false;
             }
         }
 
