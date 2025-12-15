@@ -97,7 +97,7 @@ namespace sevenWD
 		// fix a random order for draftable science tokens (Great Library)
 		std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
 
-		if (m_currentAge == 0 && isDraftingWonders())
+		if (isDraftingWonders())
 			initAge1Graph(true);
 		if (m_currentAge < 1)
 			initAge2Graph(true);
