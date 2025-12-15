@@ -173,6 +173,7 @@ namespace sevenWD
 		const PlayerCity& getCurrentPlayerCity() const { return m_playerCity[m_playerTurn]; }
 		const PlayerCity& getOtherPlayerCity() const { return m_playerCity[(m_playerTurn + 1) % 2]; }
 		void unlinkNodeFromGraph(u32 _nodeIndex);
+		void updateMilitary(u8 military, bool hasStrategyToken);
 
 		void initScienceTokens();
 		void initAge1Graph();

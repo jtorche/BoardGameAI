@@ -200,22 +200,13 @@ namespace sevenWD
 		return m_context->getWonder(wonder);
 	}
 
-	SpecialAction GameState::pick(u32 _playableCardIndex)
+	//----------------------------------------------------------------------------
+	void GameState::updateMilitary(u8 military, bool hasStrategyToken)
 	{
-		DEBUG_ASSERT(_playableCardIndex < m_numPlayableCards);
-		u8 pickedCard = m_playableCards[_playableCardIndex];
-		std::swap(m_playableCards[_playableCardIndex], m_playableCards[m_numPlayableCards - 1]);
-		m_numPlayableCards--;
-
-		unlinkNodeFromGraph(pickedCard);
-
-		const Card& card = m_context->getCard(m_graph[pickedCard].m_cardId);
-		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
-
-		if (card.getMilitary() != 0)
-		{ 
-			u8 militaryBonus = getCurrentPlayerCity().ownScienceToken(ScienceToken::Strategy);
-			m_military += (m_playerTurn == 0 ? (card.getMilitary() + militaryBonus) : -(card.getMilitary() + militaryBonus));
+		if (military > 0)
+		{
+			u8 militaryBonus = hasStrategyToken ? 1 : 0;
+			m_military += (m_playerTurn == 0 ? (military + militaryBonus) : -(military + militaryBonus));
 
 			if (m_military >= 3 && !militaryToken2[0])
 			{
@@ -238,6 +229,19 @@ namespace sevenWD
 				m_playerCity[0].m_gold = Helper::safeSub<u8>(m_playerCity[0].m_gold, 5);
 			}
 		}
+	}
+
+	SpecialAction GameState::pick(u32 _playableCardIndex)
+	{
+		DEBUG_ASSERT(_playableCardIndex < m_numPlayableCards);
+		u8 pickedCard = m_playableCards[_playableCardIndex];
+		std::swap(m_playableCards[_playableCardIndex], m_playableCards[m_numPlayableCards - 1]);
+		m_numPlayableCards--;
+
+		unlinkNodeFromGraph(pickedCard);
+
+		const Card& card = m_context->getCard(m_graph[pickedCard].m_cardId);
+		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
 
 		auto& otherPlayer = m_playerCity[(m_playerTurn + 1) % 2];
 		u32 cost = getCurrentPlayerCity().computeCost(card, otherPlayer);
@@ -249,6 +253,8 @@ namespace sevenWD
 		{
 			otherPlayer.m_gold += (u8(cost) - card.getGoldCost());
 		}
+
+		updateMilitary(card.getMilitary(), getCurrentPlayerCity().ownScienceToken(ScienceToken::Strategy));
 
 		SpecialAction action = getCurrentPlayerCity().addCard(card, otherPlayer);
 
@@ -311,6 +317,8 @@ namespace sevenWD
 		{
 			std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
 		}
+
+		updateMilitary(card.getMilitary(), false); // strategy token do not interact with wonders
 
 		DEBUG_ASSERT((m_playerCity[0].m_unbuildWonderCount + m_playerCity[1].m_unbuildWonderCount) > 0);
 
