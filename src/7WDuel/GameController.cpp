@@ -19,7 +19,7 @@ namespace sevenWD
 		}
 		else if (m_state == State::Play)
 		{
-			for (u8 i = 0; i < m_gameState.m_numPlayableCards; ++i)
+			for (u8 i = 0; i < m_gameState.getNumPlayableCards(); ++i)
 			{
 				const Card& card = m_gameState.getPlayableCard(i);
 				u32 cost = m_gameState.getCurrentPlayerCity().computeCost(card, m_gameState.getOtherPlayerCity());
@@ -47,7 +47,7 @@ namespace sevenWD
 					u32 cost = m_gameState.getCurrentPlayerCity().computeCost(wonderCard, m_gameState.getOtherPlayerCity());
 					if (cost <= m_gameState.getCurrentPlayerCity().m_gold)
 					{
-						for (u8 burnIndex = 0; burnIndex < m_gameState.m_numPlayableCards; ++burnIndex)
+						for (u8 burnIndex = 0; burnIndex < m_gameState.getNumPlayableCards(); ++burnIndex)
 						{
 							Move move{ burnIndex, Move::Action::BuildWonder, i };
 

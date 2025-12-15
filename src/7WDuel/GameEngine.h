@@ -51,7 +51,7 @@ namespace sevenWD
 		u8 scienceCards[u32(ScienceSymbol::Count)];
 		u8 guildCards[3];
 		u8 numGuildCards = 0;
-
+	
 		DiscardedCards();
 		void add(const GameContext&, const Card&);
 	};
@@ -70,6 +70,8 @@ namespace sevenWD
 		GameState& operator=(const GameState&) = default;
 		GameState(GameState&&) = default;
 		GameState& operator=(GameState&&) = default;
+
+		void makeDeterministic();
 
 		enum class NextAge
 		{
@@ -97,6 +99,7 @@ namespace sevenWD
 		Wonders getDraftableWonder(u32 _index) const;
 		void draftWonder(u32 _draftIndex);
 
+		unsigned int getNumPlayableCards() const { return m_graph.m_numPlayableCards; }
 		SpecialAction pick(u32 _playableCardIndex);
 		void burn(u32 _playableCardIndex);
 		SpecialAction buildWonder(u32 _withPlayableCardIndex, u32 _wondersIndex, u8 _additionalEffect = u8(-1));
@@ -126,6 +129,7 @@ namespace sevenWD
 		struct CardNode
 		{
 			static constexpr u32 InvalidNode = 0x1F;
+			static constexpr u32 InvalidCardId = 0x3FF;
 
 			u32 m_parent0 : 5;
 			u32 m_parent1 : 5;
@@ -140,15 +144,23 @@ namespace sevenWD
 		std::array<PlayerCity, 2> m_playerCity;
 		std::array<ScienceToken, u8(ScienceToken::Count)> m_scienceTokens;
 		u8 m_numScienceToken = 0;
+		bool m_isDeterministic = false;
 
-		std::array<CardNode, 20> m_graph;
-		std::array<u8, 6> m_playableCards; // index in m_graph
-		u8 m_numPlayableCards;
+		// Each graph a pre-determined if gameState is deterministic
+		using GraphArray = std::array<CardNode, 20>;
+		struct GraphSetup
+		{
+			GraphArray m_graph;
+			std::array<u8, 6> m_playableCards; // index in m_graph
+			u8 m_numPlayableCards;
 
-		std::array<u8, 23> m_availableAgeCards;
-		std::array<u8, 7> m_availableGuildCards;
-		u8 m_numAvailableAgeCards = 0;
-		u8 m_numAvailableGuildCards = 0;
+			std::array<u8, 23> m_availableAgeCards;
+			std::array<u8, 7> m_availableGuildCards;
+			u8 m_numAvailableAgeCards = 0;
+			u8 m_numAvailableGuildCards = 0;
+		};
+		GraphSetup m_graphsPerAge[3]; // one per age
+		GraphSetup m_graph; // active graph
 
 		std::array<u8, GameContext::MaxCardsPerAge> m_playedAgeCards;
 		u8 m_numPlayedAgeCards = 0;
@@ -160,14 +172,13 @@ namespace sevenWD
 		bool militaryToken2[2] = { false,false };
 		bool militaryToken5[2] = { false,false };
 
-		// After shuffling, round N uses pool slice [N*4 .. N*4+3]
-		std::array<Wonders, u32(Wonders::Count) - 1> m_wonderDraftPool;
+		std::array<Wonders, u32(Wonders::Count) - 1> m_wonderDraftPool; // skip Mauselum for now
 		u8 m_currentDraftRound = 0; // 0 = first round, 1 = second round, 2 = finished
 		u8 m_picksInCurrentRound = 0;
 
 	private:
-		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex);
-		u32 genInversePyramidGraph(u32 _baseSize, u32 _numRow, u32 _startNodeIndex);
+		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex, GraphArray& graph);
+		u32 genInversePyramidGraph(u32 _baseSize, u32 _numRow, u32 _startNodeIndex, GraphArray& graph);
 
 		PlayerCity& getCurrentPlayerCity() { return m_playerCity[m_playerTurn]; }
 		const PlayerCity& getCurrentPlayerCity() const { return m_playerCity[m_playerTurn]; }
@@ -176,12 +187,17 @@ namespace sevenWD
 		void updateMilitary(u8 military, bool hasStrategyToken);
 
 		void initScienceTokens();
-		void initAge1Graph();
-		void initAge2Graph();
-		void initAge3Graph();
+		void initAge1Graph(bool makeDeterministic);
+		void initAge2Graph(bool makeDeterministic);
+		void initAge3Graph(bool makeDeterministic);
+
+		void initAge1();
+		void initAge2();
+		void initAge3();
+
 		void initWonderDraft();
 		void finishWonderDraft();
-		void pickCardAdnInitNode(CardNode& _node);
+		void pickCardAdnInitNode(CardNode& _node, GraphSetup& graph);
 
 		template<typename T>
 		u8 pickCardIndex(T& _availableCards, u8& _numAvailableCard)

@@ -87,6 +87,27 @@ namespace sevenWD
 		initWonderDraft();
 	}
 
+	void GameState::makeDeterministic()
+	{
+		if (m_currentDraftRound < 2) {
+			const u32 firstOutOfDraftWonderIndex = (m_currentDraftRound + 1) * 4;
+			std::shuffle(m_wonderDraftPool.begin() + firstOutOfDraftWonderIndex, m_wonderDraftPool.end(), m_context->rand());
+		}
+
+		// fix a random order for draftable science tokens (Great Library)
+		std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
+
+		if (m_currentAge == 0 && isDraftingWonders())
+			initAge1Graph(true);
+		if (m_currentAge < 1)
+			initAge2Graph(true);
+		if (m_currentAge < 2)
+			initAge3Graph(true);
+
+		m_isDeterministic = true;
+	}
+
+	//----------------------------------------------------------------------------
 	void GameState::initWonderDraft()
 	{
 		m_playerTurn = 0;
@@ -112,7 +133,7 @@ namespace sevenWD
 		m_currentDraftRound = 2;
 		m_playerTurn = 0;
 
-		initAge1Graph();
+		initAge1();
 	}
 
 	void GameState::draftWonder(u32 _draftIndex)
@@ -153,7 +174,9 @@ namespace sevenWD
 			m_picksInCurrentRound = 0;
 
 			if (m_currentDraftRound < 2) {
-				std::shuffle(m_wonderDraftPool.begin() + 4, m_wonderDraftPool.end(), m_context->rand());
+				if (!m_isDeterministic) {
+					std::shuffle(m_wonderDraftPool.begin() + 4, m_wonderDraftPool.end(), m_context->rand());
+				}
 				m_playerTurn = 1;
 			} else {
 				finishWonderDraft();
@@ -180,9 +203,9 @@ namespace sevenWD
 	//----------------------------------------------------------------------------
 	const Card& GameState::getPlayableCard(u32 _index) const
 	{
-		DEBUG_ASSERT(_index < m_numPlayableCards);
-		u8 pickedCard = m_playableCards[_index];
-		return m_context->getCard(m_graph[pickedCard].m_cardId);
+		DEBUG_ASSERT(_index < m_graph.m_numPlayableCards);
+		u8 pickedCard = m_graph.m_playableCards[_index];
+		return m_context->getCard(m_graph.m_graph[pickedCard].m_cardId);
 	}
 
 	//----------------------------------------------------------------------------
@@ -233,14 +256,14 @@ namespace sevenWD
 
 	SpecialAction GameState::pick(u32 _playableCardIndex)
 	{
-		DEBUG_ASSERT(_playableCardIndex < m_numPlayableCards);
-		u8 pickedCard = m_playableCards[_playableCardIndex];
-		std::swap(m_playableCards[_playableCardIndex], m_playableCards[m_numPlayableCards - 1]);
-		m_numPlayableCards--;
+		DEBUG_ASSERT(_playableCardIndex < m_graph.m_numPlayableCards);
+		u8 pickedCard = m_graph.m_playableCards[_playableCardIndex];
+		std::swap(m_graph.m_playableCards[_playableCardIndex], m_graph.m_playableCards[m_graph.m_numPlayableCards - 1]);
+		m_graph.m_numPlayableCards--;
 
 		unlinkNodeFromGraph(pickedCard);
 
-		const Card& card = m_context->getCard(m_graph[pickedCard].m_cardId);
+		const Card& card = m_context->getCard(m_graph.m_graph[pickedCard].m_cardId);
 		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
 
 		auto& otherPlayer = m_playerCity[(m_playerTurn + 1) % 2];
@@ -266,13 +289,13 @@ namespace sevenWD
 
 	void GameState::burn(u32 _playableCardIndex)
 	{
-		DEBUG_ASSERT(_playableCardIndex < m_numPlayableCards);
-		u8 pickedCard = m_playableCards[_playableCardIndex];
-		std::swap(m_playableCards[_playableCardIndex], m_playableCards[m_numPlayableCards - 1]);
-		m_numPlayableCards--;
+		DEBUG_ASSERT(_playableCardIndex < m_graph.m_numPlayableCards);
+		u8 pickedCard = m_graph.m_playableCards[_playableCardIndex];
+		std::swap(m_graph.m_playableCards[_playableCardIndex], m_graph.m_playableCards[m_graph.m_numPlayableCards - 1]);
+		m_graph.m_numPlayableCards--;
 
 		unlinkNodeFromGraph(pickedCard);
-		const Card& card = m_context->getCard(m_graph[pickedCard].m_cardId);
+		const Card& card = m_context->getCard(m_graph.m_graph[pickedCard].m_cardId);
 		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
 
 		u8 burnValue = 2 + getCurrentPlayerCity().m_numCardPerType[u32(CardType::Yellow)];
@@ -281,14 +304,14 @@ namespace sevenWD
 
 	SpecialAction GameState::buildWonder(u32 _withPlayableCardIndex, u32 _wondersIndex, u8 _additionalEffect)
 	{
-		DEBUG_ASSERT(_withPlayableCardIndex < m_numPlayableCards);
+		DEBUG_ASSERT(_withPlayableCardIndex < m_graph.m_numPlayableCards);
 
-		u8 pickedCard = m_playableCards[_withPlayableCardIndex];
-		std::swap(m_playableCards[_withPlayableCardIndex], m_playableCards[m_numPlayableCards - 1]);
-		m_numPlayableCards--;
+		u8 pickedCard = m_graph.m_playableCards[_withPlayableCardIndex];
+		std::swap(m_graph.m_playableCards[_withPlayableCardIndex], m_graph.m_playableCards[m_graph.m_numPlayableCards - 1]);
+		m_graph.m_numPlayableCards--;
 
 		unlinkNodeFromGraph(pickedCard);
-		const Card& card = m_context->getCard(m_graph[pickedCard].m_cardId);
+		const Card& card = m_context->getCard(m_graph.m_graph[pickedCard].m_cardId);
 		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
 
 		Wonders pickedWonder = getCurrentPlayerCity().m_unbuildWonders[_wondersIndex];
@@ -315,7 +338,9 @@ namespace sevenWD
 		} 
 		else if (pickedWonder == Wonders::GreatLibrary)
 		{
-			std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
+			if (!m_isDeterministic) {
+				std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
+			}
 		}
 
 		updateMilitary(wonder.getMilitary(), false); // strategy token do not interact with wonders
@@ -338,16 +363,43 @@ namespace sevenWD
 		return getCurrentPlayerCity().addCard(m_context->getScienceToken(pickedToken), getOtherPlayerCity());
 	}
 
+	void GameState::unlinkNodeFromGraph(u32 _nodeIndex)
+	{
+		DEBUG_ASSERT(m_graph.m_graph[_nodeIndex].m_child0 == CardNode::InvalidNode && m_graph.m_graph[_nodeIndex].m_child1 == CardNode::InvalidNode);
+
+		auto removeFromParent = [&](u8 parent)
+			{
+				if (parent != CardNode::InvalidNode)
+				{
+					auto& parentNode = m_graph.m_graph[parent];
+					parentNode.m_child0 = parentNode.m_child0 == _nodeIndex ? CardNode::InvalidNode : parentNode.m_child0;
+					parentNode.m_child1 = parentNode.m_child1 == _nodeIndex ? CardNode::InvalidNode : parentNode.m_child1;
+
+					if (parentNode.m_child0 == CardNode::InvalidNode && parentNode.m_child1 == CardNode::InvalidNode)
+					{
+						if (parentNode.m_visible == 0) {
+							pickCardAdnInitNode(parentNode, m_graph);
+							parentNode.m_visible = 1;
+						}
+						m_graph.m_playableCards[m_graph.m_numPlayableCards++] = parent;
+					}
+				}
+			};
+		removeFromParent(m_graph.m_graph[_nodeIndex].m_parent0);
+		removeFromParent(m_graph.m_graph[_nodeIndex].m_parent1);
+	}
+
 	GameState::NextAge GameState::nextAge()
 	{
-		if (m_numPlayableCards == 0)
+		if (m_graph.m_numPlayableCards == 0)
 		{
-			if (m_currentAge == 0)
-				initAge2Graph();
-			else if (m_currentAge == 1)
-				initAge3Graph();
-			else if (m_currentAge == 2)
+			if (m_currentAge == 0) {
+				initAge2();
+			} else if (m_currentAge == 1) {
+				initAge3();
+			} else if (m_currentAge == 2) {
 				return NextAge::EndGame;
+			}
 
 			if (m_military < 0) // player 1 is advanced in military, player 0 to play
 				m_playerTurn = 0;
@@ -385,143 +437,6 @@ namespace sevenWD
 			return vp0 < vp1 ? 1 : 0;
 	}
 
-	u32 GameState::genPyramidGraph(u32 _numRow, u32 _startNodeIndex)
-	{
-		u32 prevRowStartIndex = u32(-1);
-		u32 curNodeIndex = _startNodeIndex;
-
-		for (u32 row = 0; row < _numRow; ++row)
-		{
-			for (u32 i = 0; i < 2 + row; ++i)
-			{
-				m_graph[curNodeIndex + i].m_isGuildCard = 0;
-				m_graph[curNodeIndex + i].m_visible = row % 2 == 0;
-				m_graph[curNodeIndex + i].m_child0 = CardNode::InvalidNode;
-				m_graph[curNodeIndex + i].m_child1 = CardNode::InvalidNode;
-
-				if (prevRowStartIndex != u32(-1)) // not first row
-				{
-					if (i == 0) // first card on the row
-					{
-						m_graph[curNodeIndex + i].m_parent0 = prevRowStartIndex;
-						m_graph[prevRowStartIndex].m_child0 = curNodeIndex + i;
-
-						m_graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
-					}
-					else if (i == 1 + row) // last card on the row
-					{
-						m_graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + row;
-						m_graph[prevRowStartIndex + row].m_child1 = curNodeIndex + i;
-
-						m_graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
-					}
-					else
-					{
-						m_graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + i - 1;
-						m_graph[curNodeIndex + i].m_parent1 = prevRowStartIndex + i;
-
-						m_graph[prevRowStartIndex + i - 1].m_child1 = curNodeIndex + i;
-						m_graph[prevRowStartIndex + i].m_child0 = curNodeIndex + i;
-					}
-				}
-				else
-				{
-					m_graph[curNodeIndex + i].m_parent0 = CardNode::InvalidNode;
-					m_graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
-				}
-			}
-
-			prevRowStartIndex = curNodeIndex;
-			curNodeIndex += 2 + row;
-		}
-
-		return curNodeIndex;
-	}
-
-	u32 GameState::genInversePyramidGraph(u32 _baseSize, u32 _numRow, u32 _startNodeIndex)
-	{
-		u32 prevRowStartIndex = u32(-1);
-		u32 curNodeIndex = _startNodeIndex;
-
-		for (u32 row = 0; row < _numRow; ++row)
-		{
-			for (u32 i = 0; i < _baseSize - row; ++i)
-			{
-				m_graph[curNodeIndex + i].m_isGuildCard = 0;
-				m_graph[curNodeIndex + i].m_visible = row % 2 == 0;
-				m_graph[curNodeIndex + i].m_child0 = CardNode::InvalidNode;
-				m_graph[curNodeIndex + i].m_child1 = CardNode::InvalidNode;
-
-				if (prevRowStartIndex != u32(-1))
-				{
-					m_graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + i;
-					m_graph[curNodeIndex + i].m_parent1 = prevRowStartIndex + i + 1;
-
-					m_graph[prevRowStartIndex + i].m_child1 = curNodeIndex + i;
-					m_graph[prevRowStartIndex + 1 + i].m_child0 = curNodeIndex + i;
-				}
-				else
-				{
-					m_graph[curNodeIndex + i].m_parent0 = CardNode::InvalidNode;
-					m_graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
-				}
-			}
-
-			prevRowStartIndex = curNodeIndex;
-			curNodeIndex += _baseSize - row;
-		}
-
-		return curNodeIndex;
-	}
-
-	void GameState::unlinkNodeFromGraph(u32 _nodeIndex)
-	{
-		DEBUG_ASSERT(m_graph[_nodeIndex].m_child0 == CardNode::InvalidNode && m_graph[_nodeIndex].m_child1 == CardNode::InvalidNode);
-
-		auto removeFromParent = [&](u8 parent)
-		{
-			if (parent != CardNode::InvalidNode)
-			{
-				m_graph[parent].m_child0 = m_graph[parent].m_child0 == _nodeIndex ? CardNode::InvalidNode : m_graph[parent].m_child0;
-				m_graph[parent].m_child1 = m_graph[parent].m_child1 == _nodeIndex ? CardNode::InvalidNode : m_graph[parent].m_child1;
-
-				if (m_graph[parent].m_child0 == CardNode::InvalidNode && m_graph[parent].m_child1 == CardNode::InvalidNode)
-				{
-					if(m_graph[parent].m_visible == 0)
-						pickCardAdnInitNode(m_graph[parent]);
-					m_playableCards[m_numPlayableCards++] = parent;
-				}
-			}
-		};
-		removeFromParent(m_graph[_nodeIndex].m_parent0);
-		removeFromParent(m_graph[_nodeIndex].m_parent1);
-	}
-
-	void GameState::pickCardAdnInitNode(CardNode& _node)
-	{
-		_node.m_visible = 1;
-		if (_node.m_isGuildCard)
-		{
-			u8 index = pickCardIndex(m_availableGuildCards, m_numAvailableGuildCards);
-			_node.m_cardId = m_context->getGuildCard(index).getId();
-		}
-		else
-		{
-			u8 index = pickCardIndex(m_availableAgeCards, m_numAvailableAgeCards);
-			switch (m_currentAge)
-			{
-			default:
-				DEBUG_ASSERT(0); break;
-			case 0:
-				_node.m_cardId = m_context->getAge1Card(index).getId(); break;
-			case 1:
-				_node.m_cardId = m_context->getAge2Card(index).getId(); break;
-			case 2:
-				_node.m_cardId = m_context->getAge3Card(index).getId(); break;
-			};
-		}
-	}
-
 	void GameState::initScienceTokens()
 	{
 		m_scienceTokens = {
@@ -539,114 +454,262 @@ namespace sevenWD
 		};
 
 		// Use the same science token for now
-		// std::shuffle(std::begin(m_scienceTokens), std::end(m_scienceTokens), m_context->rand());
+		std::shuffle(std::begin(m_scienceTokens), std::end(m_scienceTokens), m_context->rand());
 
 		m_numScienceToken = 5; // 5 first tokens are used on the board
 	}
 
-	void GameState::initAge1Graph()
+	void GameState::initAge1Graph(bool makeDeterministic)
 	{
 		m_currentAge = 0;
-		u32 end = genPyramidGraph(5, 0);
+		u32 end = genPyramidGraph(5, 0, m_graphsPerAge[0].m_graph);
 
-		m_numPlayedAgeCards = 0;
-		m_numPlayableCards = 0;
+		m_graphsPerAge[0].m_numPlayableCards = 0;
 		for (u32 i = 0; i < 6; ++i)
-			m_playableCards[m_numPlayableCards++] = u8(end - 6 + i);
+			m_graphsPerAge[0].m_playableCards[m_graphsPerAge[0].m_numPlayableCards++] = u8(end - 6 + i);
 
-		m_numAvailableAgeCards = m_context->getAge1CardCount();
-		for (u32 i = 0; i < m_numAvailableAgeCards; ++i)
-			m_availableAgeCards[i] = u8(i);
+		m_graphsPerAge[0].m_numAvailableGuildCards = 0;
+		m_graphsPerAge[0].m_numAvailableAgeCards = m_context->getAge1CardCount();
+		for (u32 i = 0; i < m_graphsPerAge[0].m_numAvailableAgeCards; ++i)
+			m_graphsPerAge[0].m_availableAgeCards[i] = u8(i);
 
-		for (CardNode& node : m_graph)
+		for (CardNode& node : m_graphsPerAge[0].m_graph)
 		{
-			if (node.m_visible)
-				pickCardAdnInitNode(node);
+			if (node.m_visible || makeDeterministic)
+				pickCardAdnInitNode(node, m_graphsPerAge[0]);
 		}
 	}
 
-	void GameState::initAge2Graph()
+	void GameState::initAge2Graph(bool makeDeterministic)
 	{
 		m_currentAge = 1;
-		u32 end = genInversePyramidGraph(6, 5, 0);
+		u32 end = genInversePyramidGraph(6, 5, 0, m_graphsPerAge[1].m_graph);
 
-		m_numPlayedAgeCards = 0;
-		m_numPlayableCards = 0;
+		m_graphsPerAge[1].m_numPlayableCards = 0;
 		for (u32 i = 0; i < 2; ++i)
-			m_playableCards[m_numPlayableCards++] = u8(end - 2 + i);
+			m_graphsPerAge[1].m_playableCards[m_graphsPerAge[1].m_numPlayableCards++] = u8(end - 2 + i);
 
-		m_numAvailableAgeCards = m_context->getAge2CardCount();
-		for (u32 i = 0; i < m_numAvailableAgeCards; ++i)
-			m_availableAgeCards[i] = u8(i);
+		m_graphsPerAge[1].m_numAvailableAgeCards = m_context->getAge2CardCount();
+		for (u32 i = 0; i < m_graphsPerAge[1].m_numAvailableAgeCards; ++i)
+			m_graphsPerAge[1].m_availableAgeCards[i] = u8(i);
 		
-		for (CardNode& node : m_graph)
+		for (CardNode& node : m_graphsPerAge[1].m_graph)
 		{
-			if (node.m_visible)
-				pickCardAdnInitNode(node);
+			if (node.m_visible || makeDeterministic)
+				pickCardAdnInitNode(node, m_graphsPerAge[1]);
 		}
 	}
 
-	void GameState::initAge3Graph()
+	void GameState::initAge3Graph(bool makeDeterministic)
 	{
 		m_currentAge = 2;
-		u32 end = genPyramidGraph(3, 0);
+		u32 end = genPyramidGraph(3, 0, m_graphsPerAge[2].m_graph);
 
 		const u32 connectNode0 = end;
 		const u32 connectNode1 = end + 1;
 
-		m_graph[connectNode0].m_visible = 0;
-		m_graph[connectNode1].m_visible = 0;
-		m_graph[connectNode0].m_isGuildCard = 0;
-		m_graph[connectNode1].m_isGuildCard = 0;
+		m_graphsPerAge[2].m_graph[connectNode0].m_visible = 0;
+		m_graphsPerAge[2].m_graph[connectNode1].m_visible = 0;
+		m_graphsPerAge[2].m_graph[connectNode0].m_isGuildCard = 0;
+		m_graphsPerAge[2].m_graph[connectNode1].m_isGuildCard = 0;
+		m_graphsPerAge[2].m_graph[connectNode0].m_cardId = CardNode::InvalidCardId;
+		m_graphsPerAge[2].m_graph[connectNode1].m_cardId = CardNode::InvalidCardId;
 
-		m_graph[connectNode0].m_parent0 = 5;
-		m_graph[connectNode0].m_parent1 = 6;
-		m_graph[5].m_child1 = connectNode0;
-		m_graph[6].m_child0 = connectNode0;
+		m_graphsPerAge[2].m_graph[connectNode0].m_parent0 = 5;
+		m_graphsPerAge[2].m_graph[connectNode0].m_parent1 = 6;
+		m_graphsPerAge[2].m_graph[5].m_child1 = connectNode0;
+		m_graphsPerAge[2].m_graph[6].m_child0 = connectNode0;
 		
-		m_graph[connectNode1].m_parent0 = 7;
-		m_graph[connectNode1].m_parent1 = 8;
-		m_graph[7].m_child1 = connectNode1;
-		m_graph[8].m_child0 = connectNode1;
+		m_graphsPerAge[2].m_graph[connectNode1].m_parent0 = 7;
+		m_graphsPerAge[2].m_graph[connectNode1].m_parent1 = 8;
+		m_graphsPerAge[2].m_graph[7].m_child1 = connectNode1;
+		m_graphsPerAge[2].m_graph[8].m_child0 = connectNode1;
 
-		end = genInversePyramidGraph(4, 3, end + 2);
+		end = genInversePyramidGraph(4, 3, end + 2, m_graphsPerAge[2].m_graph);
 
-		m_graph[connectNode0].m_child0 = 11;
-		m_graph[connectNode0].m_child1 = 12;
-		m_graph[11].m_parent1 = connectNode0;
-		m_graph[12].m_parent0 = connectNode0;
+		m_graphsPerAge[2].m_graph[connectNode0].m_child0 = 11;
+		m_graphsPerAge[2].m_graph[connectNode0].m_child1 = 12;
+		m_graphsPerAge[2].m_graph[11].m_parent1 = connectNode0;
+		m_graphsPerAge[2].m_graph[12].m_parent0 = connectNode0;
 
-		m_graph[connectNode1].m_child0 = 13;
-		m_graph[connectNode1].m_child1 = 14;
-		m_graph[13].m_parent1 = connectNode1;
-		m_graph[14].m_parent0 = connectNode1;
+		m_graphsPerAge[2].m_graph[connectNode1].m_child0 = 13;
+		m_graphsPerAge[2].m_graph[connectNode1].m_child1 = 14;
+		m_graphsPerAge[2].m_graph[13].m_parent1 = connectNode1;
+		m_graphsPerAge[2].m_graph[14].m_parent0 = connectNode1;
 
 		// assign randomely guild cards tag
-		std::vector<u8> guildCarTag(m_graph.size(), 0);
+		std::vector<u8> guildCarTag(m_graphsPerAge[2].m_graph.size(), 0);
 		guildCarTag[0] = 1;
 		guildCarTag[1] = 1;
 		guildCarTag[2] = 1;
 		std::shuffle(guildCarTag.begin(), guildCarTag.end(), m_context->rand());
-		for (u32 i = 0; i < m_graph.size(); ++i)
-			m_graph[i].m_isGuildCard = guildCarTag[i];
+		for (u32 i = 0; i < m_graphsPerAge[2].m_graph.size(); ++i)
+			m_graphsPerAge[2].m_graph[i].m_isGuildCard = guildCarTag[i];
 
-		m_numPlayedAgeCards = 0;
-		m_numPlayableCards = 0;
+		m_graphsPerAge[2].m_numPlayableCards = 0;
 		for (u32 i = 0; i < 2; ++i)
-			m_playableCards[m_numPlayableCards++] = u8(end - 2 + i);
+			m_graphsPerAge[2].m_playableCards[m_graphsPerAge[2].m_numPlayableCards++] = u8(end - 2 + i);
 
-		m_numAvailableAgeCards = m_context->getAge3CardCount();
-		m_numAvailableGuildCards = m_context->getGuildCardCount();
+		m_graphsPerAge[2].m_numAvailableAgeCards = m_context->getAge3CardCount();
+		m_graphsPerAge[2].m_numAvailableGuildCards = m_context->getGuildCardCount();
 
-		for (u32 i = 0; i < m_numAvailableAgeCards; ++i)
-			m_availableAgeCards[i] = u8(i);
-		for (u32 i = 0; i < m_numAvailableGuildCards; ++i)
-			m_availableGuildCards[i] = u8(i);
+		for (u32 i = 0; i < m_graphsPerAge[2].m_numAvailableAgeCards; ++i)
+			m_graphsPerAge[2].m_availableAgeCards[i] = u8(i);
+		for (u32 i = 0; i < m_graphsPerAge[2].m_numAvailableGuildCards; ++i)
+			m_graphsPerAge[2].m_availableGuildCards[i] = u8(i);
 		
-		for (CardNode& node : m_graph)
+		for (CardNode& node : m_graphsPerAge[2].m_graph)
 		{
-			if (node.m_visible)
-				pickCardAdnInitNode(node);
+			if (node.m_visible || makeDeterministic)
+				pickCardAdnInitNode(node, m_graphsPerAge[2]);
+		}
+	}
+
+	void GameState::initAge1()
+	{
+		if (!m_isDeterministic)
+			initAge1Graph(false);
+
+		m_graph = m_graphsPerAge[0];
+		m_numPlayedAgeCards = 0;
+		m_currentAge = 0;
+	}
+
+	void GameState::initAge2()
+	{
+		if (!m_isDeterministic)
+			initAge2Graph(false);
+
+		m_graph = m_graphsPerAge[1];
+		m_numPlayedAgeCards = 0;
+		m_currentAge = 1;
+	}
+
+	void GameState::initAge3()
+	{
+		if (!m_isDeterministic)
+			initAge3Graph(false);
+
+		m_graph = m_graphsPerAge[2];
+		m_numPlayedAgeCards = 0;
+		m_currentAge = 2;
+	}
+
+	u32 GameState::genPyramidGraph(u32 _numRow, u32 _startNodeIndex, GraphArray& graph)
+	{
+		u32 prevRowStartIndex = u32(-1);
+		u32 curNodeIndex = _startNodeIndex;
+
+		for (u32 row = 0; row < _numRow; ++row)
+		{
+			for (u32 i = 0; i < 2 + row; ++i)
+			{
+				graph[curNodeIndex + i].m_cardId = CardNode::InvalidCardId;
+				graph[curNodeIndex + i].m_isGuildCard = 0;
+				graph[curNodeIndex + i].m_visible = row % 2 == 0;
+				graph[curNodeIndex + i].m_child0 = CardNode::InvalidNode;
+				graph[curNodeIndex + i].m_child1 = CardNode::InvalidNode;
+
+				if (prevRowStartIndex != u32(-1)) // not first row
+				{
+					if (i == 0) // first card on the row
+					{
+						graph[curNodeIndex + i].m_parent0 = prevRowStartIndex;
+						graph[prevRowStartIndex].m_child0 = curNodeIndex + i;
+
+						graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
+					}
+					else if (i == 1 + row) // last card on the row
+					{
+						graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + row;
+						graph[prevRowStartIndex + row].m_child1 = curNodeIndex + i;
+
+						graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
+					}
+					else
+					{
+						graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + i - 1;
+						graph[curNodeIndex + i].m_parent1 = prevRowStartIndex + i;
+
+						graph[prevRowStartIndex + i - 1].m_child1 = curNodeIndex + i;
+						graph[prevRowStartIndex + i].m_child0 = curNodeIndex + i;
+					}
+				}
+				else
+				{
+					graph[curNodeIndex + i].m_parent0 = CardNode::InvalidNode;
+					graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
+				}
+			}
+
+			prevRowStartIndex = curNodeIndex;
+			curNodeIndex += 2 + row;
+		}
+
+		return curNodeIndex;
+	}
+
+	u32 GameState::genInversePyramidGraph(u32 _baseSize, u32 _numRow, u32 _startNodeIndex, GraphArray& graph)
+	{
+		u32 prevRowStartIndex = u32(-1);
+		u32 curNodeIndex = _startNodeIndex;
+
+		for (u32 row = 0; row < _numRow; ++row)
+		{
+			for (u32 i = 0; i < _baseSize - row; ++i)
+			{
+				graph[curNodeIndex + i].m_cardId = CardNode::InvalidCardId;
+				graph[curNodeIndex + i].m_isGuildCard = 0;
+				graph[curNodeIndex + i].m_visible = row % 2 == 0;
+				graph[curNodeIndex + i].m_child0 = CardNode::InvalidNode;
+				graph[curNodeIndex + i].m_child1 = CardNode::InvalidNode;
+
+				if (prevRowStartIndex != u32(-1))
+				{
+					graph[curNodeIndex + i].m_parent0 = prevRowStartIndex + i;
+					graph[curNodeIndex + i].m_parent1 = prevRowStartIndex + i + 1;
+
+					graph[prevRowStartIndex + i].m_child1 = curNodeIndex + i;
+					graph[prevRowStartIndex + 1 + i].m_child0 = curNodeIndex + i;
+				}
+				else
+				{
+					graph[curNodeIndex + i].m_parent0 = CardNode::InvalidNode;
+					graph[curNodeIndex + i].m_parent1 = CardNode::InvalidNode;
+				}
+			}
+
+			prevRowStartIndex = curNodeIndex;
+			curNodeIndex += _baseSize - row;
+		}
+
+		return curNodeIndex;
+	}
+
+	void GameState::pickCardAdnInitNode(CardNode& _node, GraphSetup& graph)
+	{
+		if (_node.m_cardId == CardNode::InvalidCardId)
+		{
+			if (_node.m_isGuildCard)
+			{
+				u8 index = pickCardIndex(graph.m_availableGuildCards, graph.m_numAvailableGuildCards);
+				_node.m_cardId = m_context->getGuildCard(index).getId();
+			}
+			else
+			{
+				u8 index = pickCardIndex(graph.m_availableAgeCards, graph.m_numAvailableAgeCards);
+				switch (m_currentAge)
+				{
+				default:
+					DEBUG_ASSERT(0); break;
+				case 0:
+					_node.m_cardId = m_context->getAge1Card(index).getId(); break;
+				case 1:
+					_node.m_cardId = m_context->getAge2Card(index).getId(); break;
+				case 2:
+					_node.m_cardId = m_context->getAge3Card(index).getId(); break;
+				};
+			}
 		}
 	}
  
@@ -663,9 +726,9 @@ namespace sevenWD
 	{
 		out << "Player turn : " << u32(m_playerTurn) << std::endl;
 		out << "Player money : " << (u32)getCurrentPlayerCity().m_gold << std::endl;
-		for (u32 i = 0; i < m_numPlayableCards; ++i)
+		for (u32 i = 0; i < m_graph.m_numPlayableCards; ++i)
 		{
-			const Card& card = m_context->getCard(m_graph[m_playableCards[i]].m_cardId);
+			const Card& card = m_context->getCard(m_graph.m_graph[m_graph.m_playableCards[i]].m_cardId);
 			out << i+1 << ", Cost= "<< getCurrentPlayerCity().computeCost(card, getOtherPlayerCity()) << " :";
 			card.print(out);
 		}
@@ -1041,14 +1104,15 @@ namespace sevenWD
 			_data[m_playedAgeCards[i]] = -1;
 
 		// Cards that have not been revealed in the graph
-		for (u32 i = 0; i < m_numAvailableAgeCards; ++i)
-			_data[m_availableAgeCards[i]] = 1;
+		// active graph usage
+		for (u32 i = 0; i < m_graph.m_numAvailableAgeCards; ++i)
+			_data[m_graph.m_availableAgeCards[i]] = 1;
 
 		// go through the graph, process visible cards
 		std::array<bool, 20> visitedNodes = {};
 
-		u32 numNodeToExplore = m_numPlayableCards;
-		std::array <u8, 6> nodesToExplore = m_playableCards;
+		u32 numNodeToExplore = m_graph.m_numPlayableCards;
+		std::array <u8, 6> nodesToExplore = m_graph.m_playableCards;
 		u32 nextNumNodeToExplore = 0;
 		std::array <u8, 6> nextNodesToExplore = {};
 		
@@ -1057,9 +1121,9 @@ namespace sevenWD
 		{
 			for (u32 i = 0; i < numNodeToExplore; ++i)
 			{
-				if (m_graph[nodesToExplore[i]].m_visible)
+				if (m_graph.m_graph[nodesToExplore[i]].m_visible)
 				{
-					u8 id = m_context->getCard(m_graph[nodesToExplore[i]].m_cardId).getAgeId();
+					u8 id = m_context->getCard(m_graph.m_graph[nodesToExplore[i]].m_cardId).getAgeId();
 					_data[id] = 2; // card visible in the graph
 					_data[GameContext::MaxCardsPerAge + id] = (T)(depth + 1);
 				}
@@ -1074,8 +1138,8 @@ namespace sevenWD
 						}
 					}
 				};
-				gatherParent(m_graph[nodesToExplore[i]].m_parent0);
-				gatherParent(m_graph[nodesToExplore[i]].m_parent1);
+				gatherParent(m_graph.m_graph[nodesToExplore[i]].m_parent0);
+				gatherParent(m_graph.m_graph[nodesToExplore[i]].m_parent1);
 				
 			}
 

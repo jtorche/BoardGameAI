@@ -990,15 +990,17 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
 // ---------------------------------------------------------------------
 int SevenWDuelRenderer::findGraphRow(u32 nodeIndex) const
 {
-    const auto& node = m_state.m_graph[nodeIndex];
+    // access active graph CardNode array
+    const auto& nodes = m_state.m_graph.m_graph;
+
+    const auto& node = nodes[nodeIndex];
 
     int r0 = 0, r1 = 0;
     if (node.m_parent0 != sevenWD::GameState::CardNode::InvalidNode)
-        r0 = 1 + findGraphRow(node.m_parent0);  // Recursively find the row for the first parent
+        r0 = 1 + findGraphRow(node.m_parent0);
     if (node.m_parent1 != sevenWD::GameState::CardNode::InvalidNode)
-        r1 = 1 + findGraphRow(node.m_parent1);  // Recursively find the row for the second parent
+        r1 = 1 + findGraphRow(node.m_parent1);
 
-    // Return the maximum depth of both parents
     return std::max(r0, r1);
 }
 
@@ -1008,18 +1010,18 @@ int SevenWDuelRenderer::findGraphColumn(u32 nodeIndex) const
     const int row = findGraphRow(nodeIndex);
     int col = 0;
 
-    // Iterate through all nodes and find the correct column for the given row
-    for (u32 i = 0; i < m_state.m_graph.size(); ++i)
+    // iterate over active graph nodes
+    const auto& nodes = m_state.m_graph.m_graph;
+    for (u32 i = 0; i < nodes.size(); ++i)
     {
         if (findGraphRow(i) == row)
         {
-            // For each card in the same row, assign a column number based on the order
-            if (i == nodeIndex) return col;  // Return the column number when we find the current node
-            col++;  // Increment column for every node in the same row
+            if (i == nodeIndex) return col;
+            col++;
         }
     }
 
-    return col;  // Return the column (it should be assigned correctly now)
+    return col;
 }
 
 // Draw the card graph (pyramid) and update UIState for hover/click.
@@ -1031,7 +1033,9 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
     const float dX = m_layout.cardW + 16.0f;
     const float dY = m_layout.cardH + 20.0f;
 
-    const auto& graph = m_state.m_graph;
+    // active graph setup and node array
+    const auto& setup = m_state.m_graph;
+    const auto& graph = setup.m_graph;
 
     // Count nodes per row (keep slots stable)
     std::vector<int> rowCardCounts;
@@ -1050,11 +1054,11 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
         return false;
         };
 
-    // Build quick lookup: nodeIndex -> playableIndex (index into m_playableCards) or -1
+    // Build quick lookup: nodeIndex -> playableIndex (index into setup.m_playableCards) or -1
     std::vector<int> playableIndexOfNode(graph.size(), -1);
-    for (u32 i = 0; i < m_state.m_numPlayableCards; ++i)
+    for (u32 i = 0; i < setup.m_numPlayableCards; ++i)
     {
-        u8 nodeIdx = m_state.m_playableCards[i];
+        u8 nodeIdx = setup.m_playableCards[i];
         if (nodeIdx < playableIndexOfNode.size())
             playableIndexOfNode[nodeIdx] = int(i);
     }
@@ -1206,7 +1210,6 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
         // Hidden node: decide back image from node flags + current age (node.m_cardId may be invalid)
         else
         {
-            // Hidden node: decide back image from node flags + current age (node.m_cardId may be invalid)
             bool isGuild = node.m_isGuildCard != 0;
             u32 age = m_state.getCurrentAge(); // 0..2 (or u32(-1) if uninitialized)
             SDL_Texture* back = GetCardBackImageForNode(isGuild, age);
@@ -1492,9 +1495,9 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
         return;
 
     u32 nodeIndex = u32(ui->selectedNode);
-    if (nodeIndex >= m_state.m_graph.size()) return;
+    if (nodeIndex >= m_state.m_graph.m_graph.size()) return;
 
-    const auto& node = m_state.m_graph[nodeIndex];
+    const auto& node = m_state.m_graph.m_graph[nodeIndex];
     if (!node.m_visible) return;
 
     const sevenWD::Card& card = m_state.m_context->getCard(node.m_cardId);
