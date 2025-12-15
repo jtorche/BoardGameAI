@@ -164,6 +164,10 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
 
     // Row 0: Player name
     m_renderer->DrawText("Player " + std::to_string(player + 1), innerX + margin, curY, Colors::White);
+
+    // Keep the first info row in its normal place, but add extra gap AFTER it.
+    const float extraAfterRow1 = 12.0f; // pixels to add below the Gold/VP/Yellow row
+
     curY += baseRowH + spacing;
 
     // Row 1: Gold + VP + Yellow count
@@ -183,7 +187,9 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         std::string yellowStr = "Yellow: " + std::to_string(yellowCount);
         m_renderer->DrawText(yellowStr, vpX - 140.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::Yellow);
     }
-    curY += baseRowH + spacing;
+
+    // advance Y by the row height + spacing, and apply the extra gap requested
+    curY += baseRowH + spacing + extraAfterRow1;
 
     // Row 2: Production - icons + counts (show weak production per resource category inline)
     {
@@ -432,7 +438,6 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
                 std::string cnt = "x" + std::to_string(owned);
                 m_renderer->DrawText(cnt, sx + symW + 6.0f, curY + (baseRowH * 0.5f) + 6.0f, Colors::White);
             }
-
             sx += symW + gap + 36.0f;
         }
     }
