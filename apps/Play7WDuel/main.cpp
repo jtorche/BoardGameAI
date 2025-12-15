@@ -413,18 +413,31 @@ int main(int argc, char** argv)
                     std::vector<sevenWD::Move> legalMoves;
                     gameController.enumerateMoves(legalMoves);
 
-                    auto moveEqual = [](const sevenWD::Move& a, const sevenWD::Move& b) -> bool {
-                        return a.action == b.action &&
-                               a.playableCard == b.playableCard &&
-                               a.wonderIndex == b.wonderIndex &&
-                               a.additionalId == b.additionalId;
-                    };
-
+                    // Match moves by action/playableCard/wonderIndex.
+                    // If UI didn't provide additionalId (== u8(-1)) allow matching a legal move
+                    // and use that legal move (it may carry the required additionalId).
+                    sevenWD::Move chosenLegalMove{};
                     bool valid = false;
+
                     for (const auto& m : legalMoves)
                     {
-                        if (moveEqual(m, uiState.requestedMove))
+                        if (m.action != uiState.requestedMove.action) continue;
+                        if (m.playableCard != uiState.requestedMove.playableCard) continue;
+                        if (m.wonderIndex != uiState.requestedMove.wonderIndex) continue;
+
+                        // If additionalId matches exactly, accept immediately.
+                        if (m.additionalId == uiState.requestedMove.additionalId)
                         {
+                            chosenLegalMove = m;
+                            valid = true;
+                            break;
+                        }
+
+                        // If UI didn't provide additionalId (common for wonder effects),
+                        // accept the first matching legal move and use its additionalId.
+                        if (uiState.requestedMove.additionalId == u8(-1))
+                        {
+                            chosenLegalMove = m;
                             valid = true;
                             break;
                         }
@@ -432,7 +445,7 @@ int main(int argc, char** argv)
 
                     if (valid)
                     {
-                        bool end = playMove(uiState.requestedMove);
+                        bool end = playMove(chosenLegalMove);
                         (void)end;
 
                         // After a move is played, reset transient UI selection
