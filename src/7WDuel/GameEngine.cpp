@@ -318,7 +318,7 @@ namespace sevenWD
 			std::shuffle(m_scienceTokens.begin() + 5, m_scienceTokens.end(), m_context->rand());
 		}
 
-		updateMilitary(card.getMilitary(), false); // strategy token do not interact with wonders
+		updateMilitary(wonder.getMilitary(), false); // strategy token do not interact with wonders
 
 		DEBUG_ASSERT((m_playerCity[0].m_unbuildWonderCount + m_playerCity[1].m_unbuildWonderCount) > 0);
 

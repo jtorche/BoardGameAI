@@ -12,7 +12,7 @@ namespace sevenWD
 	class GameContext
 	{
 	public:
-		GameContext(unsigned _seed = 42);
+		GameContext(unsigned int _seed = 42);
 
 		void initCityWithRandomWonders(PlayerCity& _player1, PlayerCity& _player2) const;
 		void initCityWithFixedWonders(PlayerCity& _player1, PlayerCity& _player2) const;

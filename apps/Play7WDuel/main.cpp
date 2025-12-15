@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     // -----------------------------------------------------------
     // GAME + UI RENDERER
     // -----------------------------------------------------------
-    sevenWD::GameContext gameContext;
+    sevenWD::GameContext gameContext((unsigned int)time(0));
     sevenWD::GameController gameController(gameContext);
     // game.initializeForNewGame();
     

@@ -161,7 +161,7 @@ namespace sevenWD
 		bool militaryToken5[2] = { false,false };
 
 		// After shuffling, round N uses pool slice [N*4 .. N*4+3]
-		std::array<Wonders, u32(Wonders::Count)> m_wonderDraftPool;
+		std::array<Wonders, u32(Wonders::Count) - 1> m_wonderDraftPool;
 		u8 m_currentDraftRound = 0; // 0 = first round, 1 = second round, 2 = finished
 		u8 m_picksInCurrentRound = 0;
 

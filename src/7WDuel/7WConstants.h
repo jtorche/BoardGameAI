@@ -43,13 +43,13 @@ namespace sevenWD
 		GreatLighthouse,
 		HangingGarden,
 		GreatLibrary,
-		Mausoleum,
 		Piraeus,
 		Pyramids,
 		Sphinx,
 		Zeus,
 		Atremis,
 		ViaAppia,
+		Mausoleum,
 		Count
 	};
 
