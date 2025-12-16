@@ -391,3 +391,4 @@ FodyWeavers.xsd
 # Project specific settings
 build/
 assets/
+*.bin

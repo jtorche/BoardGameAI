@@ -27,7 +27,8 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 			using std::chrono::milliseconds;
 
 			auto t1 = high_resolution_clock::now();
-			move = AIs[curPlayerTurn]->selectMove(sevenWDContext, game, moves, AIThreadContexts[curPlayerTurn]);
+			float score;
+			std::tie(move, score) = AIs[curPlayerTurn]->selectMove(sevenWDContext, game, moves, AIThreadContexts[curPlayerTurn]);
 			auto t2 = high_resolution_clock::now();
 
 			duration<double, std::milli> ms_double = t2 - t1;

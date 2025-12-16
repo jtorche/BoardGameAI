@@ -2,7 +2,7 @@
 
 namespace sevenWD
 {
-	Move NoBurnAI::selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext)
+	std::pair<Move, float> NoBurnAI::selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext)
 	{
 		std::vector<Move> cpyMoves = _moves;
 		std::sort(cpyMoves.begin(), cpyMoves.end(), [&](const Move& _a, const Move& _b)
@@ -20,14 +20,14 @@ namespace sevenWD
 		}
 
 		if (i == 0) {
-			return _moves[_sevenWDContext.rand()() % _moves.size()];
+			return { _moves[_sevenWDContext.rand()() % _moves.size()], 0.0f };
 		}
 		else {
-			return i == 1 ? cpyMoves[0] : cpyMoves[_sevenWDContext.rand()() % (i - 1)];
+			return { i == 1 ? cpyMoves[0] : cpyMoves[_sevenWDContext.rand()() % (i - 1)], 0.0f };
 		}
 	}
 
-	Move PriorityAI::selectMove(const GameContext&, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext)
+	std::pair<Move, float> PriorityAI::selectMove(const GameContext&, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext)
 	{
 		auto moveScore = [&](const Move& m) {
 			std::array<float, (size_t)CardType::Count> priority[3] = {};
@@ -74,10 +74,10 @@ namespace sevenWD
 				return moveScore(_a) > moveScore(_b);
 			});
 
-		return cpyMoves[0];
+		return { cpyMoves[0], 0.0f };
 	}
 
-	Move MonteCarloAI::selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) {
+	std::pair<Move, float> MonteCarloAI::selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) {
 		std::vector<u32> numWins(_moves.size());
 
 		std::vector<Move> curMoves;
@@ -99,6 +99,6 @@ namespace sevenWD
 		}
 
 		auto it = std::max_element(numWins.begin(), numWins.end());
-		return _moves[std::distance(numWins.begin(), it)];
+		return { _moves[std::distance(numWins.begin(), it)], ((float)*it) / m_numSimu };
 	}
 }

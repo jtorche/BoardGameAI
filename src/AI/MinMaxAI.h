@@ -19,7 +19,7 @@ namespace sevenWD
 
 		double getAvgMovesPerTurn() const { return double(m_numMoves.load()) / m_numNodeExplored.load(); }
 
-		Move selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override;
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override;
 
 		std::string getName() const {
 			return "MinMax";

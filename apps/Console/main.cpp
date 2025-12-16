@@ -65,29 +65,27 @@ int main()
 
 	NetworkType netType = NetworkType::Net_TwoLayer8;
 	const bool useExtraTensorData = false;
-	unsigned int datasetSize = 200'000;
+	unsigned int datasetSize = 10'000;
 	std::string namePrefix = datasetSize < 50'000 ? "_small" : "";
 
 	u32 generation;
 	Tournament tournament;
-	// tournament.addAI(new MonteCarloAI(50));
-	// tournament.addAI(new MonteCarloAI(50));
-	// tournament.addAI(new MonteCarloAI(200));
-	// tournament.addAI(new NoBurnAI());
-	// tournament.addAI(new RandAI());
+	
+	tournament.addAI(new MCTS_Deterministic(200, 10));
+	tournament.addAI(new MonteCarloAI(200));
 
 	AIInterface* newGenAI;
 
 	{
 		// Load a previous trained AI as an oppponent
 		auto [pAI, gen] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
-		pAI->m_depth = 10;
-		pAI->m_numSimu = 50;
+		pAI->m_depth = 15;
+		pAI->m_numSimu = 500;
 		if(pAI)
 			tournament.addAI(pAI);
 	}
 
-	tournament.playOneGame(sevenWDContext, 0, 0);
+	// tournament.playOneGame(sevenWDContext, 0, 0);
 
 	//{
 	//	// Load a previous trained AI as an oppponent
@@ -96,6 +94,10 @@ int main()
 	//		tournament.addAI(pAI);
 	//	}
 	//}
+
+	tournament.generateDataset(sevenWDContext, 1000);
+	tournament.print();
+	return 0;
 
 	{
 		auto [pAI, gen] = ML_Toolbox::loadAIFromFile<AIType>(netType, namePrefix, useExtraTensorData);

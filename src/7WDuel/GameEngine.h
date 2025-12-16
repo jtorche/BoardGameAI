@@ -152,12 +152,14 @@ namespace sevenWD
 		{
 			GraphArray m_graph;
 			std::array<u8, 6> m_playableCards; // index in m_graph
-			u8 m_numPlayableCards;
-
 			std::array<u8, 23> m_availableAgeCards;
 			std::array<u8, 7> m_availableGuildCards;
+			u8 m_age;
+			u8 m_numPlayableCards;
 			u8 m_numAvailableAgeCards = 0;
 			u8 m_numAvailableGuildCards = 0;
+
+
 		};
 		GraphSetup m_graphsPerAge[3]; // one per age
 		GraphSetup m_graph; // active graph
@@ -205,6 +207,9 @@ namespace sevenWD
 			u32 index = m_context->rand()() % _numAvailableCard;
 
 			u8 cardIndex = _availableCards[index];
+			if (m_currentAge == 2) {
+				DEBUG_ASSERT(cardIndex<20);
+			}
 			std::swap(_availableCards[index], _availableCards[_numAvailableCard - 1]);
 			_numAvailableCard--;
 			return cardIndex;

@@ -10,7 +10,7 @@ namespace sevenWD
 	struct AIInterface 
 	{
 		virtual ~AIInterface() {}
-		virtual Move selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) = 0;
+		virtual std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) = 0;
 		virtual std::string getName() const = 0;
 
 		virtual void* createPerThreadContext() const { return nullptr; }
@@ -19,8 +19,8 @@ namespace sevenWD
 
 	struct RandAI : AIInterface
 	{
-		Move selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override {
-			return _moves[_sevenWDContext.rand()() % _moves.size()];
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override {
+			return { _moves[_sevenWDContext.rand()() % _moves.size()], 0.0f };
 		}
 
 		std::string getName() const override {
@@ -30,7 +30,7 @@ namespace sevenWD
 
 	struct NoBurnAI : AIInterface
 	{
-		Move selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override;
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override;
 
 		std::string getName() const override {
 			return "NoBurnAI";
@@ -40,7 +40,7 @@ namespace sevenWD
 	struct PriorityAI : AIInterface
 	{
 		PriorityAI(bool focusMilitary, bool focusScience) : m_focusMilitary(focusMilitary), m_focusScience(focusScience) {}
-		Move selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override;
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController&, const std::vector<Move>& _moves, void* pThreadContext) override;
 
 		std::string getName() const override {
 			if (m_focusMilitary) {
@@ -67,7 +67,7 @@ namespace sevenWD
 			m_AIs[1] = std::unique_ptr<AI1>(pAI1);
 		}
 
-		Move selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override {
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override {
 			return m_precentage >= _sevenWDContext.rand()() % 100 ? m_AIs[0]->selectMove(_sevenWDContext, _game, _moves, pThreadContext) : m_AIs[1]->selectMove(_sevenWDContext, _game, _moves, pThreadContext);
 		}
 
@@ -81,7 +81,7 @@ namespace sevenWD
 	struct MonteCarloAI : AIInterface {
 		MonteCarloAI(u32 numSimu) : m_numSimu(numSimu) {}
 
-		Move selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override;
+		std::pair<Move, float> selectMove(const GameContext& _sevenWDContext, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext) override;
 
 		std::string getName() const {
 			std::stringstream namestr;

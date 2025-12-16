@@ -99,9 +99,9 @@ namespace sevenWD
 
 		if (isDraftingWonders())
 			initAge1Graph(true);
-		if (m_currentAge < 1)
+		if (isDraftingWonders() || m_currentAge < 1)
 			initAge2Graph(true);
-		if (m_currentAge < 2)
+		if (isDraftingWonders() || m_currentAge < 2)
 			initAge3Graph(true);
 
 		m_isDeterministic = true;
@@ -461,9 +461,9 @@ namespace sevenWD
 
 	void GameState::initAge1Graph(bool makeDeterministic)
 	{
-		m_currentAge = 0;
-		u32 end = genPyramidGraph(5, 0, m_graphsPerAge[0].m_graph);
+		m_graphsPerAge[0].m_age = 0;
 
+		u32 end = genPyramidGraph(5, 0, m_graphsPerAge[0].m_graph);
 		m_graphsPerAge[0].m_numPlayableCards = 0;
 		for (u32 i = 0; i < 6; ++i)
 			m_graphsPerAge[0].m_playableCards[m_graphsPerAge[0].m_numPlayableCards++] = u8(end - 6 + i);
@@ -482,9 +482,9 @@ namespace sevenWD
 
 	void GameState::initAge2Graph(bool makeDeterministic)
 	{
-		m_currentAge = 1;
-		u32 end = genInversePyramidGraph(6, 5, 0, m_graphsPerAge[1].m_graph);
+		m_graphsPerAge[1].m_age = 1;
 
+		u32 end = genInversePyramidGraph(6, 5, 0, m_graphsPerAge[1].m_graph);
 		m_graphsPerAge[1].m_numPlayableCards = 0;
 		for (u32 i = 0; i < 2; ++i)
 			m_graphsPerAge[1].m_playableCards[m_graphsPerAge[1].m_numPlayableCards++] = u8(end - 2 + i);
@@ -502,9 +502,9 @@ namespace sevenWD
 
 	void GameState::initAge3Graph(bool makeDeterministic)
 	{
-		m_currentAge = 2;
-		u32 end = genPyramidGraph(3, 0, m_graphsPerAge[2].m_graph);
+		m_graphsPerAge[2].m_age = 2;
 
+		u32 end = genPyramidGraph(3, 0, m_graphsPerAge[2].m_graph);
 		const u32 connectNode0 = end;
 		const u32 connectNode1 = end + 1;
 
@@ -567,32 +567,36 @@ namespace sevenWD
 
 	void GameState::initAge1()
 	{
+		m_currentAge = 0;
+
 		if (!m_isDeterministic)
 			initAge1Graph(false);
 
 		m_graph = m_graphsPerAge[0];
 		m_numPlayedAgeCards = 0;
-		m_currentAge = 0;
+
 	}
 
 	void GameState::initAge2()
 	{
+		m_currentAge = 1;
+
 		if (!m_isDeterministic)
 			initAge2Graph(false);
 
 		m_graph = m_graphsPerAge[1];
 		m_numPlayedAgeCards = 0;
-		m_currentAge = 1;
 	}
 
 	void GameState::initAge3()
 	{
+		m_currentAge = 2;
+
 		if (!m_isDeterministic)
 			initAge3Graph(false);
 
 		m_graph = m_graphsPerAge[2];
 		m_numPlayedAgeCards = 0;
-		m_currentAge = 2;
 	}
 
 	u32 GameState::genPyramidGraph(u32 _numRow, u32 _startNodeIndex, GraphArray& graph)
@@ -698,7 +702,7 @@ namespace sevenWD
 			else
 			{
 				u8 index = pickCardIndex(graph.m_availableAgeCards, graph.m_numAvailableAgeCards);
-				switch (m_currentAge)
+				switch (graph.m_age)
 				{
 				default:
 					DEBUG_ASSERT(0); break;

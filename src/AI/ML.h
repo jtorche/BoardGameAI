@@ -110,7 +110,7 @@ struct SimpleNetworkAI : BaseNetworkAI
 		return "SimpleNetworkAI_" + m_name;
 	}
 
-	sevenWD::Move selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& controller, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override
+	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& controller, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override
 	{
 		std::vector<float> scores(_moves.size());
 
@@ -142,12 +142,12 @@ struct SimpleNetworkAI : BaseNetworkAI
 			for (u32 i = 0; i < scores.size(); ++i) {
 				if (scores[i] >= *it - m_bestScoreMargin) {
 					if (--numEligibleScore == choice) {
-						return _moves[i];
+						return { _moves[i], scores[i] };
 					}
 				}
 			}
 		} 
-		return _moves[std::distance(scores.begin(), it)];
+		return { _moves[std::distance(scores.begin(), it)], (float)*it };
 	}
 };
 struct ML_Toolbox

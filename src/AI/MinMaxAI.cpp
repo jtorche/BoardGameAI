@@ -16,7 +16,7 @@ namespace sevenWD
 
     }
 
-    Move MinMaxAI::selectMove(const GameContext&, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext)
+    std::pair<Move, float> MinMaxAI::selectMove(const GameContext&, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext)
     {
         std::vector<std::future<float>> asyncScores(_moves.size());
         std::atomic<float> b = 1.0f;
@@ -65,7 +65,7 @@ namespace sevenWD
 
         auto bestIt = std::max_element(scores.begin(), scores.end());
         u32 bestScoreIndex = (u32)std::distance(scores.begin(), bestIt);
-        return _moves[bestScoreIndex];
+        return { _moves[bestScoreIndex], scores[bestScoreIndex] };
     }
 
 	//-------------------------------------------------------------------------------------------------

@@ -39,34 +39,23 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // -----------------------------------------------------------
-    // AI: try to load MCTS_Simple; fall back to RandAI if loading fails
-    // -----------------------------------------------------------
-    MCTS_Simple* rawLoadedAI = nullptr;
-    unsigned int loadedGen = 0;
-    std::tie(rawLoadedAI, loadedGen) = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
-
-    // take ownership if load succeeded; unique_ptr accepts nullptr too
-    std::unique_ptr<MCTS_Simple> ownedAI(rawLoadedAI);
-
-    // keep a stack RandAI for fallback
-    sevenWD::RandAI randAi;
-
-    // activeAI will point to either the loaded AI (ownedAI.get()) or the fallback randAi
+    // ---------------
+    // Prepare AI 
+    // ---------------
     sevenWD::AIInterface* activeAI = nullptr;
-    if (ownedAI)
-    {
-        // configure loaded AI
-        ownedAI->m_depth = 15;
-        ownedAI->m_numSimu = 200;
-        activeAI = ownedAI.get();
-        std::cout << "Loaded AI: " << activeAI->getName() << " (gen " << loadedGen << ")\n";
+    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
+	// if (pLoadedAI)
+    // {
+    //     pLoadedAI->m_depth = 15;
+    //     pLoadedAI->m_numSimu = 200;
+	// 	activeAI = pLoadedAI;
+    // }
+
+    if (!activeAI) {
+        activeAI = new MCTS_Deterministic(10000, 20);
     }
-    else
-    {
-        activeAI = &randAi;
-        std::cout << "Failed to load MCTS_Simple — using RandAI fallback\n";
-    }
+    
+    std::cout << "Loaded AI: " << activeAI->getName() << "\n";
 
     // create per-thread context for the active AI (may be nullptr for simple AIs)
     void* aiThreadCtx = activeAI->createPerThreadContext();
@@ -275,7 +264,9 @@ int main(int argc, char** argv)
                             if (!moves.empty())
                             {
                                 // Use the active AI to pick the move
-                                sevenWD::Move chosen = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
+								float score;
+                                sevenWD::Move chosen;
+                                std::tie(chosen, score) = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
 
                                 std::cout << "AI (" << activeAI->getName() << ") playing move: ";
                                 gameController.printMove(std::cout, chosen) << "\n";
