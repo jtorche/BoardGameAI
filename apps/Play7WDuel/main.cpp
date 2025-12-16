@@ -81,9 +81,6 @@ int main(int argc, char** argv)
     RendererInterface renderer(gWindow);
     SevenWDuelRenderer ui(gameController.m_gameState, &renderer);
 
-    // RNG for random move selection (still used for tie-breaking / other code)
-    std::mt19937 rng(static_cast<uint32_t>(SDL_GetTicks()));
-
     bool running = true;
     Uint64 last = SDL_GetTicks();
 
