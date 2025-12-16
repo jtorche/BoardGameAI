@@ -28,7 +28,11 @@ namespace sevenWD
 			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
 		}
 
+		template<typename Fun>
+		void enumerateMoves(Fun&& _fun) const;
+
 		void enumerateMoves(std::vector<Move>&) const;
+		u32 enumerateMoves(Move outMoves[], u32 bufferSize) const;
 		bool play(Move _move);
 
 		bool filterMove(Move _move) const;

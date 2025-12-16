@@ -3,9 +3,9 @@
 
 namespace sevenWD
 {
-	void GameController::enumerateMoves(std::vector<Move>& _moves) const
+	template<typename Fun>
+	void GameController::enumerateMoves(Fun&& _fun) const
 	{
-		_moves.clear();
 		if (m_state == State::DraftWonder)
 		{
 			u8 count = m_gameState.getNumDraftableWonders();
@@ -14,7 +14,7 @@ namespace sevenWD
 				Move move{};
 				move.playableCard = i;
 				move.action = Move::DraftWonder;
-				_moves.push_back(move);
+				_fun(move);
 			}
 		}
 		else if (m_state == State::Play)
@@ -27,12 +27,12 @@ namespace sevenWD
 				{
 					Move move = Move{ i, Move::Action::Pick };
 					if (!filterMove(move))
-						_moves.push_back(Move{ i, Move::Action::Pick });
+						_fun(Move{ i, Move::Action::Pick });
 				}
 
 				Move move = Move{ i, Move::Action::Burn };
-				if(!filterMove(move))
-					_moves.push_back(Move{ i, Move::Action::Burn });
+				if (!filterMove(move))
+					_fun(Move{ i, Move::Action::Burn });
 			}
 
 			u8 totalUnbuilt = m_gameState.m_playerCity[0].m_unbuildWonderCount + m_gameState.m_playerCity[1].m_unbuildWonderCount;
@@ -55,40 +55,42 @@ namespace sevenWD
 							{
 							case Wonders::Zeus:
 							{
-								size_t prevMoveCount = _moves.size();
+								bool canDelete = false;
 								for (u32 r = u32(ResourceType::FirstBrown); r <= u32(ResourceType::LastBrown); ++r)
 								{
 									if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
 									{
 										move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
-										_moves.push_back(move);
+										_fun(move);
+										canDelete = true;
 									}
 								}
-								if (prevMoveCount == _moves.size())
-									_moves.push_back(move);
+								if (!canDelete)
+									_fun(move);
 							}
-								break;
+							break;
 
 							case Wonders::CircusMaximus:
 							{
-								size_t prevMoveCount = _moves.size();
+								bool canDelete = false;
 								for (u32 r = u32(ResourceType::FirstGrey); r <= u32(ResourceType::LastGrey); ++r)
 								{
 									if (m_gameState.getOtherPlayerCity().m_bestProductionCardId[r] != u8(-1))
 									{
 										move.additionalId = m_gameState.getOtherPlayerCity().m_bestProductionCardId[r];
-										_moves.push_back(move);
+										_fun(move);
+										canDelete = true;
 									}
 								}
-								if (prevMoveCount == _moves.size())
-									_moves.push_back(move);
+								if (!canDelete)
+									_fun(move);
 							}
-								break;
+							break;
 
 							case Wonders::Mausoleum:
-								
+
 							default:
-								_moves.push_back(move);
+								_fun(move);
 								break;
 							}
 						}
@@ -104,7 +106,7 @@ namespace sevenWD
 				Move move{ u8(-1), Move::Action::ScienceToken };
 				move.playableCard = i;
 
-				_moves.push_back(move);
+				_fun(move);
 			}
 		}
 		else if (m_state == State::GreatLibraryToken || m_state == State::GreatLibraryTokenThenReplay)
@@ -114,13 +116,32 @@ namespace sevenWD
 			{
 				Move move{ u8(-1), Move::Action::ScienceToken };
 				move.additionalId = m_gameState.m_context->getScienceToken(tokenDraft[i]).getId();
-				_moves.push_back(move);
+				_fun(move);
 			}
 		}
 		else
 		{
 			DEBUG_ASSERT(0);
 		}
+	}
+
+	void GameController::enumerateMoves(std::vector<Move>& _moves) const
+	{
+		_moves.clear();
+		enumerateMoves([&](const Move& move) {
+			_moves.push_back(move);
+		});
+	}
+
+	u32 GameController::enumerateMoves(Move outMoves[], u32 bufferSize) const
+	{
+		u32 count = 0;
+		enumerateMoves([&](const Move& move) {
+			if (count < bufferSize)
+				outMoves[count] = move;
+			count++;
+		});
+		return count;
 	}
 
 	bool GameController::play(Move _move)
