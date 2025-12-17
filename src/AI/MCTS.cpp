@@ -68,9 +68,9 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 			MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
 			auto [reward, simPlayer] = playout(pExpandedNode);
 
-			DEBUG_ASSERT(simPlayer == pExpandedNode->m_gameState.m_gameState.getCurrentPlayerTurn());
+			DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
 			if (pExpandedNode->m_gameState.m_winType != WinType::None) {
-				DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_gameState.m_gameState.getCurrentPlayerTurn());
+				DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
 			}
 
 			backPropagate(pExpandedNode, reward);
@@ -135,7 +135,7 @@ MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode)
 			if (st == sevenWD::GameController::State::WinPlayer0 || st == sevenWD::GameController::State::WinPlayer1) {
 				u32 winner = (st == sevenWD::GameController::State::WinPlayer0) ? 0u : 1u;
 				// owner is the player who made the move that produced this child
-				u32 owner = 1u - pChild->m_gameState.m_gameState.getCurrentPlayerTurn();
+				u32 owner = pNode->m_playerTurn;
 				if (owner == winner) {
 					return pChild; // immediate forced win
 				}
@@ -192,7 +192,7 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode)
 {
 	using namespace sevenWD;
 
-	const u32 rootPlayer = pNode->m_gameState.m_gameState.getCurrentPlayerTurn();
+	const u32 rootPlayer = pNode->m_playerTurn;
 
 	if (pNode->m_gameState.m_winType != WinType::None) {
 		GameController::State state = pNode->m_gameState.m_state;
@@ -232,7 +232,7 @@ void MCTS_Deterministic::backPropagate(MTCS_Node* pNode, float reward)
 {
 	DEBUG_ASSERT(pNode);
 
-	const u32 playoutPlayer = pNode->m_gameState.m_gameState.getCurrentPlayerTurn();
+	const u32 playoutPlayer = pNode->m_playerTurn;
 
 	MTCS_Node* pCur = pNode;
 	while (pCur != nullptr) {
@@ -242,7 +242,7 @@ void MCTS_Deterministic::backPropagate(MTCS_Node* pNode, float reward)
 		// If node has a parent, the parent.currentPlayer is the player who played the move that produced 'pCur'.
 		// Use that owner to decide reward sign: if owner == playoutPlayer use reward, else invert.
 		if (pCur->m_pParent) {
-			const u32 owner = pCur->m_pParent->m_gameState.m_gameState.getCurrentPlayerTurn();
+			const u32 owner = pCur->m_pParent->m_playerTurn;
 			const float valueForOwner = (owner == playoutPlayer) ? reward : (1.0f - reward);
 			pCur->m_totalRewards += valueForOwner;
 		}

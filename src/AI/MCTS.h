@@ -22,6 +22,7 @@ struct MTCS_Node {
 		: m_pParent(pParent)
 		, m_move_from_parent(moveFromParent)
 		, m_gameState(_gamestate)
+		, m_playerTurn((u8)_gamestate.m_gameState.getCurrentPlayerTurn())
 	{}
 
 	MTCS_Node* m_pParent = nullptr;
@@ -35,7 +36,8 @@ struct MTCS_Node {
 	MTCS_Node** m_children = m_childrenStorage.data();
 
 	u16 m_numUnexploredMoves = 0;
-	u16 m_numChildren = 0;
+	u8 m_numChildren = 0;
+	u8 m_playerTurn = 0;
 
 	u32 m_visits = 0;
 	float m_totalRewards = 0;
