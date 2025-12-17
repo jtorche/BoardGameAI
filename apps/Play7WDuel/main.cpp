@@ -398,7 +398,7 @@ int main(int argc, char** argv)
             u32 vp1 = gs.m_playerCity[1].computeVictoryPoint(gs.m_playerCity[0]);
 
             std::ostringstream oss;
-            oss << "Final scores - Player 0: " << vp0 << "   Player 1: " << vp1;
+            oss << "Final scores - Player 1: " << vp0 << "   Player 2: " << vp1;
 
             // Draw near top-left (adjust coordinates as desired)
             renderer.DrawText(oss.str(), 20.0f, 200.0f, SevenWDuelRenderer::Colors::White);
@@ -409,7 +409,7 @@ int main(int argc, char** argv)
                 // tie-break by blue cards per rules in GameState::findWinner; show draw
                 winner = "Result: Draw (tie-break by blue cards)";
             } else {
-                winner = std::string("Winner: Player ") + (vp0 > vp1 ? "0" : "1");
+                winner = std::string("Winner: Player ") + (vp0 > vp1 ? "1" : "2");
             }
             renderer.DrawText(winner, 20.0f, 150.0f, SevenWDuelRenderer::Colors::White);
         }
