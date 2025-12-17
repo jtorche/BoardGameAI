@@ -6,6 +6,8 @@
 #include <random>
 #include <memory>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include "7WDuelRenderer.h"
 #include "7WDuel/GameController.h"
@@ -90,6 +92,11 @@ int main(int argc, char** argv)
 
     // Toggle: when true only player 1 may interact with mouse; player 2 moves must be triggered by space (AI).
     bool onlyPlayer1Mouse = false;
+
+    // Store last AI-chosen score for UI rendering
+    float lastAIScore = 0.0f;
+    bool lastAIScoreValid = false;
+    std::string lastAIScoreText;
 
     // Helper to check if the controller is in a terminal (win) state
     auto isGameOver = [&gameController]() -> bool
@@ -212,6 +219,10 @@ int main(int argc, char** argv)
 
         history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType, uiGameState });
         historyIndex = history.size() - 1;
+
+        // Invalidate AI score display when human plays (optional)
+        // lastAIScoreValid = false;
+
         return ended;
     };
 
@@ -264,11 +275,20 @@ int main(int argc, char** argv)
                             if (!moves.empty())
                             {
                                 // Use the active AI to pick the move
-								float score;
+                                float score;
                                 sevenWD::Move chosen;
                                 std::tie(chosen, score) = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
 
-                                std::cout << "AI (" << activeAI->getName() << ") playing move: ";
+                                // Keep last score for UI rendering
+                                lastAIScore = score;
+                                lastAIScoreValid = true;
+                                {
+                                    std::ostringstream oss;
+                                    oss << "AI score: " << std::fixed << std::setprecision(3) << score;
+                                    lastAIScoreText = oss.str();
+                                }
+
+                                std::cout << "AI (" << activeAI->getName() << ") playing move (score=" << std::fixed << std::setprecision(3) << score << "): ";
                                 gameController.printMove(std::cout, chosen) << "\n";
 
                                 // Execute move. play(...) returns true if the game ended as a result.
@@ -365,6 +385,34 @@ int main(int argc, char** argv)
         // label
         std::string label = std::string("Only Player1 Mouse: ") + (onlyPlayer1Mouse ? "ON" : "OFF");
         renderer.DrawText(label, float(bx + 10), float(by + 8), SevenWDuelRenderer::Colors::White);
+
+        // Draw last AI score (if available) below the toggle button
+        if (lastAIScoreValid) {
+            renderer.DrawText(lastAIScoreText, float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
+        }
+
+        // When game is over draw both player final scores using computeVictoryPoint()
+        if (isGameOver()) {
+            const auto& gs = gameController.m_gameState;
+            u32 vp0 = gs.m_playerCity[0].computeVictoryPoint(gs.m_playerCity[1]);
+            u32 vp1 = gs.m_playerCity[1].computeVictoryPoint(gs.m_playerCity[0]);
+
+            std::ostringstream oss;
+            oss << "Final scores - Player 0: " << vp0 << "   Player 1: " << vp1;
+
+            // Draw near top-left (adjust coordinates as desired)
+            renderer.DrawText(oss.str(), 20.0f, 200.0f, SevenWDuelRenderer::Colors::White);
+
+            // Draw winner text below
+            std::string winner;
+            if (vp0 == vp1) {
+                // tie-break by blue cards per rules in GameState::findWinner; show draw
+                winner = "Result: Draw (tie-break by blue cards)";
+            } else {
+                winner = std::string("Winner: Player ") + (vp0 > vp1 ? "0" : "1");
+            }
+            renderer.DrawText(winner, 20.0f, 150.0f, SevenWDuelRenderer::Colors::White);
+        }
 
         // Handle toggle click — consume the click so it won't trigger game moves
         if (uiState.leftClick && btnHovered)
