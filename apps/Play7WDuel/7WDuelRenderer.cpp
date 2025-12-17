@@ -1296,10 +1296,12 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     auto valueToX = [&](double value) -> float {
         if (value < -9.5) value = -9.5;
         if (value > 9.5) value = 9.5;
-        // normalize (-9.5..9.5) -> (0..1)
-        double t = (value + 9.5) / 19.0;
+        // REVERSED mapping: positive values now move toward the left (player 0 panel),
+        // negative toward the right (player 1). This matches gameplay where positive
+        // m_military favors player 0.
+        double t = (9.5 - value) / 19.0; // flip direction compared to previous implementation
         return x0 + float(t * m_layout.militaryTrackLength);
-        };
+    };
 
     // Precompute boundary Xs for positions -9.5, -8.5, ... +9.5 (20 boundaries).
     // The visual "slot" for score V is the horizontal span between boundary[a] and boundary[b+1]
@@ -1354,19 +1356,17 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
 
     // Draw vertical separators at boundaries (-9.5..+9.5).
-    // Use a single small white vertical line for each boundary (no double yellow lines).
     const float sepHalfH = 12.0f;
     const float smallTop = trackY - sepHalfH * 0.6f;
     const float smallBottom = trackY + sepHalfH * 0.6f;
     for (int i = 0; i < int(boundX.size()); ++i)
     {
         float x = boundX[i];
-        // single small white separator
         m_renderer->DrawLine(x, smallTop, x, smallBottom, Colors::White);
     }
 
     // Draw current position marker centered in the slot for 'pos' (between boundX[pos+9] and boundX[pos+10])
-    float markerX = valueToX(pos); // center of the slot
+    float markerX = valueToX(pos); // center of the slot (now reversed)
     m_renderer->DrawImage(GetMilitaryMarkerImage(), markerX - 15, y, 30, 30);
 
     // Draw two token slots per player at thresholds 3 and 6 (use valueToX to place in slot centers)
