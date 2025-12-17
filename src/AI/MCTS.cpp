@@ -1,5 +1,6 @@
 
 #include "MCTS.h"
+#include "Core/thread_pool.h"
 
 // --------------------------------------------- //
 // ---------------- MCTS_Simple ---------------- //
@@ -49,43 +50,63 @@ std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameConte
 // --------------------------------------------------- //
 // ---------------- MCTS_Deterministic --------------- //
 // --------------------------------------------------- //
+MCTS_Deterministic::MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt) : m_numMoves(numMoves), m_numSampling(numGameState)
+{
+	if (mt) {
+		m_threadPool = new thread_pool(std::thread::hardware_concurrency());
+	}
+}
+
 std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
 {
 	using namespace sevenWD;
 
-	core::LinearAllocator linAllocator(128 * 1024);
-
 	std::vector<u32> sampledVisits(_moves.size(), 0);
 	std::vector<float> scores(_moves.size(), 0);
+	std::mutex* pMutex = nullptr;
 
-	for (u32 i=0 ; i<m_numSampling ; ++i) {
-		MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
-		pRoot->m_gameState.m_gameState.makeDeterministic();
-		initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator);
+	auto processRange = [&](u32 start, u32 end)
+	{
+		core::LinearAllocator linAllocator(128 * 1024);
 
-		for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
-			MTCS_Node* pSelectedNode = selection(pRoot);
-			MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
-			auto [reward, simPlayer] = playout(pExpandedNode);
-
-			DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
-			if (pExpandedNode->m_gameState.m_winType != WinType::None) {
-				DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
+		for (u32 i = start; i < end; ++i) {
+			MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
+			pRoot->m_gameState.m_gameState.makeDeterministic();
+			initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator);
+			for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
+				MTCS_Node* pSelectedNode = selection(pRoot);
+				MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
+				auto [reward, simPlayer] = playout(pExpandedNode);
+				DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
+				if (pExpandedNode->m_gameState.m_winType != WinType::None) {
+					DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
+				}
+				backPropagate(pExpandedNode, reward);
 			}
 
-			backPropagate(pExpandedNode, reward);
-		}
+			if (pMutex) pMutex->lock();
 
-		DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
-		for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
-			sampledVisits[j] += pRoot->m_children[j]->m_visits;
-			scores[j] += pRoot->m_children[j]->m_totalRewards;
-		}
+			DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
+			for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
+				sampledVisits[j] += pRoot->m_children[j]->m_visits;
+				scores[j] += pRoot->m_children[j]->m_totalRewards;
+			}
 
-		pRoot->cleanup();
-		linAllocator.reset();
+			if (pMutex) pMutex->unlock();
+
+			pRoot->cleanup();
+			linAllocator.reset();
+		}
+	};
+
+	if (m_threadPool) {
+		std::mutex mut;
+		pMutex = &mut;
+		m_threadPool->parallelize_loop(0u, m_numSampling, processRange);
 	}
-	
+	else {
+		processRange(0u, m_numSampling);
+	}
 	
 	// select best move among all sampled visits
 	u32 bestIndex = 0;

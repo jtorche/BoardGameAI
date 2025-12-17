@@ -57,17 +57,18 @@ struct MTCS_Node {
 	}
 };
 
-
+class thread_pool;
 struct MCTS_Deterministic : sevenWD::AIInterface
 {
 	std::mt19937 m_rand{ (u32)time(nullptr) };
+	thread_pool* m_threadPool = nullptr;
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
 
 	float C = sqrtf(2.0f); // exploration constant
 	static constexpr float cEpsilon = 1e-5f;
 
-	MCTS_Deterministic(u32 numMoves, u32 numGameState) : m_numMoves(numMoves), m_numSampling(numGameState) {}
+	MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt = false);
 
 	std::string getName() const override {
 		return std::string("MCTS_Deterministic") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);

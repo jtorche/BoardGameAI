@@ -55,7 +55,7 @@ int main(int argc, char** argv)
     // }
 
     if (!activeAI) {
-        activeAI = new MCTS_Deterministic(10000, 50);
+        activeAI = new MCTS_Deterministic(10000, 50, true);
     }
     
     std::cout << "Loaded AI: " << activeAI->getName() << "\n";
