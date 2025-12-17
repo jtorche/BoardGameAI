@@ -1444,11 +1444,11 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                 float previewY = my - (ph - mh) * 0.5f;
                 m_renderer->DrawImage(GetBackgroundPanel(), previewX - sidePad, previewY - topPad - sidePad, pw + sidePad * 2.0f, ph + topPad + bottomPad + sidePad);
 
-                // compute cost for current player to build this wonder
-                u32 cur = m_state.getCurrentPlayerTurn();
-                const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(cur);
-                const sevenWD::PlayerCity& other = m_state.getPlayerCity((cur + 1) % 2);
-                u32 cost = myCity.computeCost(wonderCard, other);
+                // compute cost FOR THE OWNER of this wonder (not the current player)
+                const int ownerIdx = owner;
+                const sevenWD::PlayerCity& ownerCity = m_state.getPlayerCity(ownerIdx);
+                const sevenWD::PlayerCity& ownerOther = m_state.getPlayerCity((ownerIdx + 1) % 2);
+                u32 cost = ownerCity.computeCost(wonderCard, ownerOther);
 
                 // draw cost text above magnified wonder
                 std::string costText = std::string("Cost: ") + std::to_string(int(cost));

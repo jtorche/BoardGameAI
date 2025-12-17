@@ -10,6 +10,7 @@
 #include <iomanip>
 
 #include "7WDuelRenderer.h"
+#include "Slider.h"
 #include "7WDuel/GameController.h"
 #include "AI/AI.h"
 #include "AI/ML.h"
@@ -44,7 +45,7 @@ int main(int argc, char** argv)
     // ---------------
     // Prepare AI 
     // ---------------
-    sevenWD::AIInterface* activeAI = nullptr;
+    MCTS_Deterministic* activeAI = nullptr;
     // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
 	// if (pLoadedAI)
     // {
@@ -54,7 +55,7 @@ int main(int argc, char** argv)
     // }
 
     if (!activeAI) {
-        activeAI = new MCTS_Deterministic(10000, 20);
+        activeAI = new MCTS_Deterministic(10000, 50);
     }
     
     std::cout << "Loaded AI: " << activeAI->getName() << "\n";
@@ -226,6 +227,19 @@ int main(int argc, char** argv)
         return ended;
     };
 
+    // Create two sliders with desired ranges and default values.
+    std::vector<Slider*> allSliders;
+    Slider sliderAINumSamples(10, 200, 30, "AI Samples");
+    Slider sliderNumSimu(1000, 200000, 10000, "AI Num Simu");
+	allSliders.push_back(&sliderAINumSamples);
+	allSliders.push_back(&sliderNumSimu);
+
+    // Place sliders somewhere in UI (top-right under toggle). We'll set positions every frame before drawing.
+    const int bx = 1600;
+    const int by = 0;
+    const int bw = 320;
+    const int bh = 36;
+
     // -----------------------------------------------------------
     // MAIN LOOP
     // -----------------------------------------------------------
@@ -274,6 +288,9 @@ int main(int argc, char** argv)
                             gameController.enumerateMoves(moves);
                             if (!moves.empty())
                             {
+                                activeAI->m_numSampling = sliderAINumSamples.value;
+								activeAI->m_numMoves = sliderNumSimu.value;
+
                                 // Use the active AI to pick the move
                                 float score;
                                 sevenWD::Move chosen;
@@ -328,6 +345,9 @@ int main(int argc, char** argv)
             {
                 uiState.mouseX = static_cast<int>(e.motion.x + 0.5f);
                 uiState.mouseY = static_cast<int>(e.motion.y + 0.5f);
+
+                // dragging support: update sliders if they are dragging
+                for (Slider* s : allSliders) s->onMouseMove(uiState.mouseX, uiState.mouseY);
             }
 
             // Button down: set transient click flags and update mouse coords
@@ -337,9 +357,28 @@ int main(int argc, char** argv)
                 uiState.mouseY = static_cast<int>(e.button.y + 0.5f);
 
                 if (e.button.button == SDL_BUTTON_LEFT)
+                {
                     uiState.leftClick = true;
+
+                    // slider interaction: check clicks on sliders (use current positions)
+                    for (Slider* s : allSliders) s->onMouseDown(uiState.mouseX, uiState.mouseY);
+                }
                 else if (e.button.button == SDL_BUTTON_RIGHT)
                     uiState.rightClick = true;
+            }
+
+            // Button up: clear dragging state for sliders
+            if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+            {
+                // update mouse coords on up
+                uiState.mouseX = static_cast<int>(e.button.x + 0.5f);
+                uiState.mouseY = static_cast<int>(e.button.y + 0.5f);
+
+                if (e.button.button == SDL_BUTTON_LEFT)
+                {
+                    // release sliders
+                    for (Slider* s : allSliders) s->onMouseUp();
+                }
             }
         }
 
@@ -361,12 +400,6 @@ int main(int argc, char** argv)
         // --------------------------
         // Draw toggle button + handle click
         // --------------------------
-        // Button placement (top-right area)
-        const int bx = 1600;
-        const int by = 0;
-        const int bw = 320;
-        const int bh = 36;
-
         bool btnHovered = uiState.mouseX >= bx && uiState.mouseX <= bx + bw &&
                           uiState.mouseY >= by && uiState.mouseY <= by + bh;
 
@@ -389,6 +422,27 @@ int main(int argc, char** argv)
         // Draw last AI score (if available) below the toggle button
         if (lastAIScoreValid) {
             renderer.DrawText(lastAIScoreText, float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
+        }
+
+        // -----------------------------------------------------------
+        // Draw sliders (position them relative to toggle area)
+        // -----------------------------------------------------------
+        // slider visual area start
+        float sliderBaseX = float(20);
+        float sliderBaseY = float(by + bh + 100.0f);
+        float sliderW = float(bw - 24);
+        const float sliderSpacing = 40.0f;
+        const float sliderH = 20.0f;
+
+        // layout and draw all sliders from the vector
+        for (size_t i = 0; i < allSliders.size(); ++i)
+        {
+            Slider* s = allSliders[i];
+            s->x = sliderBaseX;
+            s->y = sliderBaseY + float(i) * sliderSpacing;
+            s->w = sliderW;
+            s->h = sliderH;
+            s->draw(renderer, uiState.mouseX, uiState.mouseY);
         }
 
         // When game is over draw both player final scores using computeVictoryPoint()

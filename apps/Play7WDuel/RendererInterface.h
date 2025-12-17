@@ -38,6 +38,16 @@ namespace std
 class RendererInterface
 {
 public:
+    // Shared color constants for all renderers / UI components
+    struct Colors
+    {
+        static constexpr SDL_Color White{ 255, 255, 255, 255 };
+        static constexpr SDL_Color Yellow{ 255, 255,   0, 255 };
+        static constexpr SDL_Color Cyan{ 0, 255, 255, 255 };
+        static constexpr SDL_Color Green{ 0, 255,   0, 255 };
+        static constexpr SDL_Color Red{ 255,   0,   0, 255 };
+    };
+
     RendererInterface(SDL_Window* window)
     {
         m_renderer = SDL_CreateRenderer(window, nullptr);

@@ -54,6 +54,9 @@ public:
         float wonderDraftRoundOffset = 40.0f;    // offset for round text above cards
     };
 
+    // keep compatibility with existing code that used `Colors::...`
+    using Colors = RendererInterface::Colors;
+
     // UI state is stored outside the renderer. The application must fill mouse
     // coordinates and click events each frame and call draw(ui).
     // Semantics:
@@ -101,18 +104,6 @@ public:
         // will display controller state (mode, win type, etc.). The renderer
         // will never mutate the controller through this pointer.
         const sevenWD::GameController* gameController = nullptr;
-    };
-
-    // ============================
-    //  COLOR CONSTANTS
-    // ============================
-    struct Colors
-    {
-        static constexpr SDL_Color White{ 255, 255, 255, 255 };
-        static constexpr SDL_Color Yellow{ 255, 255,   0, 255 };
-        static constexpr SDL_Color Cyan{ 0, 255, 255, 255 };
-        static constexpr SDL_Color Green{ 0, 255,   0, 255 };
-        static constexpr SDL_Color Red{ 255,   0,   0, 255 };
     };
 
     struct Layout
