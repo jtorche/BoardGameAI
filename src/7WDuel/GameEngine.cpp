@@ -888,7 +888,9 @@ namespace sevenWD
 		}
 
 		m_numCardPerType[u32(_card.m_type)]++;
-		m_victoryPoints += _card.m_victoryPoints;
+		if (_card.m_type != CardType::Guild) {
+			m_victoryPoints += _card.m_victoryPoints;
+		}
 
 		for (u32 i = 0; i < u32(ResourceType::Count); ++i)
 		{
