@@ -68,6 +68,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	auto processRange = [&](u32 start, u32 end)
 	{
 		core::LinearAllocator linAllocator(128 * 1024);
+		std::vector<Move> scratchMoves;
 
 		for (u32 i = start; i < end; ++i) {
 			MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
@@ -76,7 +77,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 			for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
 				MTCS_Node* pSelectedNode = selection(pRoot);
 				MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
-				auto [reward, simPlayer] = playout(pExpandedNode);
+				auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves);
 				DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
 				if (pExpandedNode->m_gameState.m_winType != WinType::None) {
 					DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
@@ -209,7 +210,7 @@ MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator
 	}
 }
 
-std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode)
+std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves)
 {
 	using namespace sevenWD;
 
@@ -224,13 +225,13 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode)
 
 	GameController controller = pNode->m_gameState;
 	bool end = false;
-	std::vector<Move> moves;
+	scratchMoves.clear();
 	while (!end) {
-		controller.enumerateMoves(moves);
-		if (moves.empty()) {
+		controller.enumerateMoves(scratchMoves);
+		if (scratchMoves.empty()) {
 			break;
 		}
-		Move move = moves[m_rand() % moves.size()];
+		Move move = scratchMoves[m_rand() % scratchMoves.size()];
 		end = controller.play(move);
 	}
 

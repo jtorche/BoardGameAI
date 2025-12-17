@@ -79,6 +79,6 @@ struct MCTS_Deterministic : sevenWD::AIInterface
 	void initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator);
 	MTCS_Node* selection(MTCS_Node* pNode);
 	MTCS_Node* expansion(MTCS_Node* pNode, core::LinearAllocator& linAllocator);
-	std::pair<float, u32> playout(MTCS_Node* pNode);
+	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves);
 	void backPropagate(MTCS_Node* pNode, float reward);
 };
