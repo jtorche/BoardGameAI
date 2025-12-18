@@ -67,7 +67,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 
 	auto processRange = [&](u32 start, u32 end)
 	{
-		core::LinearAllocator linAllocator(128 * 1024);
+		core::LinearAllocator linAllocator(8 * 1024 * 1024);
 		std::vector<Move> scratchMoves;
 
 		for (u32 i = start; i < end; ++i) {
@@ -103,7 +103,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	if (m_threadPool) {
 		std::mutex mut;
 		pMutex = &mut;
-		m_threadPool->parallelize_loop(0u, m_numSampling, processRange);
+		m_threadPool->parallelize_loop(0u, m_numSampling, processRange, m_numSampling);
 	}
 	else {
 		processRange(0u, m_numSampling);

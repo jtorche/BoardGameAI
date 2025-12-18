@@ -45,8 +45,6 @@ namespace sevenWD
 			return "None";
 		}
 	}
-
-
 }
 
 #if 1
@@ -71,19 +69,19 @@ int main()
 	u32 generation;
 	Tournament tournament;
 	
-	tournament.addAI(new MCTS_Deterministic(200, 10));
-	tournament.addAI(new MonteCarloAI(200));
+	tournament.addAI(new MCTS_Deterministic(1000, 8));
+	tournament.addAI(new MonteCarloAI(10));
 
 	AIInterface* newGenAI;
 
-	{
-		// Load a previous trained AI as an oppponent
-		auto [pAI, gen] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
-		pAI->m_depth = 15;
-		pAI->m_numSimu = 500;
-		if(pAI)
-			tournament.addAI(pAI);
-	}
+	//{
+	//	// Load a previous trained AI as an oppponent
+	//	auto [pAI, gen] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
+	//	pAI->m_depth = 20;
+	//	pAI->m_numSimu = 1000;
+	//	if(pAI)
+	//		tournament.addAI(pAI);
+	//}
 
 	// tournament.playOneGame(sevenWDContext, 0, 0);
 
@@ -95,7 +93,7 @@ int main()
 	//	}
 	//}
 
-	tournament.generateDataset(sevenWDContext, 1000);
+	tournament.generateDataset(sevenWDContext, 500);
 	tournament.print();
 	return 0;
 

@@ -26,10 +26,11 @@ namespace core
 			// ensure user requested size considers alignment
 			size_t reqSize = (size + (alignment - 1)) & ~(alignment - 1);
 
-			// try current page
-			if (!m_pages.empty())
+			// Try to find any existing page with enough free space (first-fit).
+			// This ensures that after reset() (which zeroes used on all pages)
+			// all pages are considered for reuse instead of only the last one.
+			for (auto &cur : m_pages)
 			{
-				Page& cur = m_pages.back();
 				std::uintptr_t base = reinterpret_cast<std::uintptr_t>(cur.data);
 				std::uintptr_t curr = base + cur.used;
 				std::uintptr_t aligned = (curr + (alignment - 1)) & ~(alignment - 1);

@@ -229,8 +229,8 @@ int main(int argc, char** argv)
 
     // Create two sliders with desired ranges and default values.
     std::vector<Slider*> allSliders;
-    Slider sliderAINumSamples(10, 200, 30, "AI Samples");
-    Slider sliderNumSimu(1000, 200000, 10000, "AI Num Simu");
+    Slider sliderAINumSamples(10, 1000, 50, "AI Samples");
+    Slider sliderNumSimu(10000, 500000, 50000, "AI Num Simu");
 	allSliders.push_back(&sliderAINumSamples);
 	allSliders.push_back(&sliderNumSimu);
 

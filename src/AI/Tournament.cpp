@@ -32,9 +32,12 @@ void Tournament::generateDataset(const sevenWD::GameContext& context, u32 datase
 			// Match every AIs against every others
 			for (u32 i = 0; i < m_AIs.size(); ++i) {
 				for (u32 j = 0; j < m_AIs.size(); ++j) {
-					playOneGame(context, threadSafeDataset, i, j, perThreadAIContext[i], perThreadAIContext[j]);
+					if (i != j)
+						playOneGame(context, threadSafeDataset, i, j, perThreadAIContext[i], perThreadAIContext[j]);
 				}
 			}
+
+			std::cout << m_numGameInDataset << " / " << datasetSize << std::endl;
 		}
 
 		for (size_t i = 0; i < m_AIs.size(); ++i) {
