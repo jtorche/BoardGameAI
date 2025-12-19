@@ -110,7 +110,7 @@ namespace sevenWD
 		std::ostream& printPlayablCards(std::ostream& out) const;
 		std::ostream& printAvailableTokens(std::ostream& out) const;
 
-		static const u32 TensorSize = 165;
+		static const u32 TensorSize = 167;
 		template<typename T>
 		u32 fillTensorData(T* _data, u32 _mainPlayer) const;
 
