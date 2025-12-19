@@ -61,6 +61,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 {
 	using namespace sevenWD;
 
+	float maxDepthAvg;
 	std::vector<u32> sampledVisits(_moves.size(), 0);
 	std::vector<float> scores(_moves.size(), 0);
 	std::mutex* pMutex = nullptr;
@@ -71,11 +72,13 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 		std::vector<Move> scratchMoves;
 
 		for (u32 i = start; i < end; ++i) {
+			u32 maxDepth = 0;
 			MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
 			pRoot->m_gameState.m_gameState.makeDeterministic();
 			initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator);
 			for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
-				MTCS_Node* pSelectedNode = selection(pRoot);
+				u32 depth = 0;
+				MTCS_Node* pSelectedNode = selection(pRoot, depth);
 				MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
 				auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves);
 				DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
@@ -83,11 +86,13 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 					DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
 				}
 				backPropagate(pExpandedNode, reward);
+				maxDepth = std::max(depth, maxDepth);
 			}
 
 			if (pMutex) pMutex->lock();
 
 			DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
+			maxDepthAvg += (float)maxDepth;
 			for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
 				sampledVisits[j] += pRoot->m_children[j]->m_visits;
 				scores[j] += pRoot->m_children[j]->m_totalRewards;
@@ -108,18 +113,21 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	else {
 		processRange(0u, m_numSampling);
 	}
+
+	maxDepthAvg = maxDepthAvg / m_numSampling;
 	
 	// select best move among all sampled visits
 	u32 bestIndex = 0;
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
+		scores[i] /= sampledVisits[i];
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];
 			bestIndex = i;
 		}
 	}
 
-	return { _moves[bestIndex], scores[bestIndex] / sampledVisits[bestIndex] };
+	return { _moves[bestIndex], scores[bestIndex] };
 }
 
 void  MCTS_Deterministic::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator)
@@ -141,8 +149,9 @@ void  MCTS_Deterministic::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[]
 	}
 }
 
-MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode)
+MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode, u32& depth)
 {
+	depth++;
 	if (pNode->m_numChildren == 0 || pNode->m_numUnexploredMoves > 0) {
 		return pNode;
 	}
@@ -171,7 +180,7 @@ MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode)
 				pBestChild = pChild;
 			}
 		}
-		return selection(pBestChild);
+		return selection(pBestChild, depth);
 	}
 }
 
