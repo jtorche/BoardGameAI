@@ -8,6 +8,11 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <future>
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <chrono>
 
 #include "7WDuelRenderer.h"
 #include "Slider.h"
@@ -98,6 +103,11 @@ int main(int argc, char** argv)
     float lastAIScore = 0.0f;
     bool lastAIScoreValid = false;
     std::string lastAIScoreText;
+
+    // Background AI task state
+    std::atomic<bool> aiThinking{ false };
+    std::future<std::pair<sevenWD::Move, float>> aiTask;
+    std::mutex aiResultMutex; // not strictly necessary with future, kept for extensibility
 
     // Helper to check if the controller is in a terminal (win) state
     auto isGameOver = [&gameController]() -> bool
@@ -284,38 +294,46 @@ int main(int argc, char** argv)
                         }
                         else
                         {
-                            std::vector<sevenWD::Move> moves;
-                            gameController.enumerateMoves(moves);
-                            if (!moves.empty())
+                            // If an AI task is already running, ignore extra triggers
+                            if (aiThinking.load())
                             {
-                                activeAI->m_numSampling = sliderAINumSamples.value;
-								activeAI->m_numMoves = sliderNumSimu.value;
-
-                                // Use the active AI to pick the move
-                                float score;
-                                sevenWD::Move chosen;
-                                std::tie(chosen, score) = activeAI->selectMove(gameContext, gameController, moves, aiThreadCtx);
-
-                                // Keep last score for UI rendering
-                                lastAIScore = score;
-                                lastAIScoreValid = true;
-                                {
-                                    std::ostringstream oss;
-                                    oss << "AI score: " << std::fixed << std::setprecision(3) << score;
-                                    lastAIScoreText = oss.str();
-                                }
-
-                                std::cout << "AI (" << activeAI->getName() << ") playing move (score=" << std::fixed << std::setprecision(3) << score << "): ";
-                                gameController.printMove(std::cout, chosen) << "\n";
-
-                                // Execute move. play(...) returns true if the game ended as a result.
-                                bool ended = playMove(chosen);
-                                if (ended)
-                                    std::cout << "Game ended after this move.\n";
+                                std::cout << "AI is already thinking...\n";
                             }
                             else
                             {
-                                std::cout << "No legal moves to play\n";
+                                std::vector<sevenWD::Move> moves;
+                                gameController.enumerateMoves(moves);
+                                if (!moves.empty())
+                                {
+                                    // Update AI parameters from sliders
+									activeAI->m_numSampling = sliderAINumSamples.value;
+									activeAI->m_numMoves = sliderNumSimu.value;
+
+                                    // Launch AI computation in background to avoid blocking UI.
+                                    // Make a copy of the current GameController for the AI to work on.
+                                    sevenWD::GameController controllerCopy = gameController;
+                                    // create a per-thread context for this background task
+                                    void* bgCtx = activeAI->createPerThreadContext();
+
+                                    aiThinking.store(true);
+                                    lastAIScoreValid = false;
+                                    lastAIScoreText = "AI thinking...";
+
+                                    // Launch async task
+                                    aiTask = std::async(std::launch::async,
+                                        [activeAI, &gameContext, controllerCopy = std::move(controllerCopy), moves = std::move(moves), bgCtx]() mutable -> std::pair<sevenWD::Move, float>
+                                        {
+                                            // compute choice (may be expensive)
+                                            auto result = activeAI->selectMove(gameContext, controllerCopy, moves, bgCtx);
+                                            // cleanup per-thread context used by this background job
+                                            activeAI->destroyPerThreadContext(bgCtx);
+                                            return result;
+                                        });
+                                }
+                                else
+                                {
+                                    std::cout << "No legal moves to play\n";
+                                }
                             }
                         }
                     }
@@ -390,12 +408,56 @@ int main(int argc, char** argv)
         // ---- update ----
         // game.update(dt); (if you want)
 
+        // Check background AI task completion (non-blocking)
+        if (aiThinking.load() && aiTask.valid())
+        {
+            using namespace std::chrono_literals;
+            if (aiTask.wait_for(0ms) == std::future_status::ready)
+            {
+                auto result = aiTask.get(); // safe: task finished
+                sevenWD::Move chosen = result.first;
+                float score = result.second;
+
+                // Update UI with AI result and play the move on the main thread
+                lastAIScore = score;
+                lastAIScoreValid = true;
+                {
+                    std::ostringstream oss;
+                    oss << "AI score: " << std::fixed << std::setprecision(3) << score;
+                    lastAIScoreText = oss.str();
+                }
+
+                std::cout << "AI (" << activeAI->getName() << ") playing move (score=" << std::fixed << std::setprecision(3) << score << "): ";
+                gameController.printMove(std::cout, chosen) << "\n";
+
+                // Execute move on main thread and record history
+                bool ended = playMove(chosen);
+                if (ended)
+                    std::cout << "Game ended after this move.\n";
+
+                aiThinking.store(false);
+            }
+        }
+
         // ---- render ----
         SDL_SetRenderDrawColor(renderer.GetSDLRenderer(), 0, 0, 0, 255);
         SDL_RenderClear(renderer.GetSDLRenderer());
 
         // Pass UI state into renderer. Renderer will set hover/selection and may set moveRequested + requestedMove.
         ui.draw(&uiState, &uiGameState);
+
+        // If AI is thinking, prevent any UI-initiated game moves this frame.
+        // This ensures renderer may still update visuals (hover, sliders) but any move requests are ignored.
+        if (aiThinking.load())
+        {
+            if (uiState.moveRequested)
+            {
+                std::cout << "Move request ignored while AI is thinking.\n";
+            }
+            uiState.moveRequested = false;
+            uiState.leftClick = false;
+            uiState.rightClick = false;
+        }
 
         // --------------------------
         // Draw toggle button + handle click
@@ -420,7 +482,12 @@ int main(int argc, char** argv)
         renderer.DrawText(label, float(bx + 10), float(by + 8), SevenWDuelRenderer::Colors::White);
 
         // Draw last AI score (if available) below the toggle button
-        if (lastAIScoreValid) {
+        if (aiThinking.load())
+        {
+            // Show thinking text while background AI is running
+            renderer.DrawText(std::string("AI thinking..."), float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
+        }
+        else if (lastAIScoreValid) {
             renderer.DrawText(lastAIScoreText, float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
         }
 
@@ -465,7 +532,7 @@ int main(int argc, char** argv)
             } else {
                 winner = std::string("Winner: Player ") + (vp0 > vp1 ? "1" : "2");
             }
-            renderer.DrawText(winner, 20.0f, 150.0f, SevenWDuelRenderer::Colors::White);
+            renderer.DrawText(winner, 20.0f, 240, SevenWDuelRenderer::Colors::White);
         }
 
         // Handle toggle click — consume the click so it won't trigger game moves
@@ -563,7 +630,7 @@ int main(int argc, char** argv)
         SDL_RenderPresent(renderer.GetSDLRenderer());
     }
 
-    // cleanup AI thread context (works for loaded AI or fallback RandAI)
+    // If background AI still created a per-thread context (main thread), clean it up
     activeAI->destroyPerThreadContext(aiThreadCtx);
 
     SDL_DestroyWindow(gWindow);

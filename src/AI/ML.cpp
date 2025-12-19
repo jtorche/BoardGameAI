@@ -327,7 +327,7 @@ u32 ML_Toolbox::parseGenerationFromNetFilename(std::string filename) {
 	return (u32)atoi(buffer);
 }
 
-void ML_Toolbox::saveNet(std::string namePrefix, u32 generation, std::shared_ptr<BaseNN>(&net)[3])
+void ML_Toolbox::saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, 3>& net)
 {
 	for (u32 i = 0; i < 3; ++i) {
 		std::string filename = buildNetFilename(net[i]->getNetName(), namePrefix, net[i]->m_extraTensorData, i, generation);
@@ -353,7 +353,7 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 	}
 }
 
-bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::shared_ptr<BaseNN>(&net)[3], bool useExtraTensorData)
+bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, 3>& net, bool useExtraTensorData)
 {
 	for (u32 i = 0; i < 3; ++i) {
 		std::string filename = buildNetFilename(BaseNN::getNetworkName(netType), namePrefix, useExtraTensorData, i, generation);
@@ -370,7 +370,7 @@ bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 genera
 	return true;
 }
 
-bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::shared_ptr<BaseNN>(&net)[3], std::string& outFullName)
+bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, 3>& net, std::string& outFullName)
 {
 	std::vector<std::string> networksFilenames[3];
 	try {

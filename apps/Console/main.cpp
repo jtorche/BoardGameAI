@@ -130,7 +130,7 @@ int main()
 		ML_Toolbox::Dataset dataset[3];
 		tournament.fillDataset(dataset);
 
-		std::shared_ptr<BaseNN> net[3] = {
+		std::array<std::shared_ptr<BaseNN>, 3> net = {
 			ML_Toolbox::constructNet(netType, useExtraTensorData),
 			ML_Toolbox::constructNet(netType, useExtraTensorData),
 			ML_Toolbox::constructNet(netType, useExtraTensorData)

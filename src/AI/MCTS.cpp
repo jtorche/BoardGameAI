@@ -50,7 +50,7 @@ std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameConte
 // --------------------------------------------------- //
 // ---------------- MCTS_Deterministic --------------- //
 // --------------------------------------------------- //
-MCTS_Deterministic::MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt) : m_numMoves(numMoves), m_numSampling(numGameState)
+MCTS_Deterministic::MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt) : BaseNetworkAI("MCTS_Deterministic", {}), m_numMoves(numMoves), m_numSampling(numGameState)
 {
 	if (mt) {
 		m_threadPool = new thread_pool(std::thread::hardware_concurrency());

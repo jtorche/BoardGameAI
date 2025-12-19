@@ -5,6 +5,7 @@
 #include "AI.h"
 #include "MinMaxAI.h"
 #include <mutex>
+#include <array>
 
 enum class NetworkType {
 	Net_BaseLine,
@@ -46,7 +47,8 @@ struct BaseNN
 };
 
 struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
-	BaseNetworkAI(std::string name, std::shared_ptr<BaseNN>(&network)[3]) : m_name(std::move(name)), m_network{ network[0], network[1], network[2] } {
+	// Take std::array instead of C-style array
+	BaseNetworkAI(std::string name, const std::array<std::shared_ptr<BaseNN>, 3>& network) : m_name(std::move(name)), m_network(network) {
 	}
 
 	struct ThreadContext {
@@ -83,21 +85,26 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 	void* createPerThreadContext() const override {
 		static std::mutex m_mutex;
 
-		ThreadContext* pContext = new ThreadContext{ this };
-		m_mutex.lock();
-		m_network[0]->getNetwork().save("tmp0_createPerThreadContext.bin");
-		m_network[1]->getNetwork().save("tmp1_createPerThreadContext.bin");
-		m_network[2]->getNetwork().save("tmp2_createPerThreadContext.bin");
-		pContext->m_net[0].load("tmp0_createPerThreadContext.bin");
-		pContext->m_net[1].load("tmp1_createPerThreadContext.bin");
-		pContext->m_net[2].load("tmp2_createPerThreadContext.bin");
-		m_mutex.unlock();
-		return pContext;
+		if (m_network[0] && m_network[1] && m_network[2]) {
+			ThreadContext* pContext = new ThreadContext{ this };
+			m_mutex.lock();
+			m_network[0]->getNetwork().save("tmp0_createPerThreadContext.bin");
+			m_network[1]->getNetwork().save("tmp1_createPerThreadContext.bin");
+			m_network[2]->getNetwork().save("tmp2_createPerThreadContext.bin");
+			pContext->m_net[0].load("tmp0_createPerThreadContext.bin");
+			pContext->m_net[1].load("tmp1_createPerThreadContext.bin");
+			pContext->m_net[2].load("tmp2_createPerThreadContext.bin");
+			m_mutex.unlock();
+			return pContext;
+		}
+
+		return nullptr;
 	}
 	void destroyPerThreadContext(void* ptr) const override { delete (ThreadContext*)ptr; }
 
 	std::string m_name;
-	std::shared_ptr<BaseNN> m_network[3];	
+	// Use std::array for network storage
+	std::array<std::shared_ptr<BaseNN>, 3> m_network;	
 };
 
 struct SimpleNetworkAI : BaseNetworkAI
@@ -208,15 +215,16 @@ struct ML_Toolbox
 
 	static void trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet);
 	static void trainNet(u32 age, u32 epoch, tiny_dnn::tensor_t& data, tiny_dnn::tensor_t& labels, BaseNN* pNet);
-	static void saveNet(std::string namePrefix, u32 generation, std::shared_ptr<BaseNN>(&net)[3]);
-	static bool loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::shared_ptr<BaseNN>(&net)[3], bool useExtraTensorData);
-	static bool loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::shared_ptr<BaseNN>(&net)[3], std::string& outFullName);
+	// APIs now use std::array instead of C arrays
+	static void saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, 3>& net);
+	static bool loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, 3>& net, bool useExtraTensorData);
+	static bool loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, 3>& net, std::string& outFullName);
 
 	template<typename T>
 	static std::pair<T*, u32> loadAIFromFile(NetworkType netType, std::string namePrefix, bool useExtraTensorData)
 	{
 		u32 mostRecentGen = 0;
-		std::shared_ptr<BaseNN> net[3];
+		std::array<std::shared_ptr<BaseNN>, 3> net{ nullptr, nullptr, nullptr };
 		std::string fullName;
 		if (loadLastGenNet(netType, namePrefix, useExtraTensorData, mostRecentGen, net, fullName)) {
 			return std::make_pair(new T(fullName, net), mostRecentGen);
