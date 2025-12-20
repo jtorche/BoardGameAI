@@ -15,12 +15,24 @@ void Tournament::addAI(sevenWD::AIInterface* pAI)
 	m_winTypes.emplace_back(); 
 }
 
-void Tournament::generateDataset(const sevenWD::GameContext& context, u32 datasetSize)
+void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay)
 {
 	using namespace sevenWD;
 
-	m_numGameInDataset = (u32)m_dataset[0].m_data.size();
+	m_numGamePlayed = 0;
 	std::vector<std::array<ML_Toolbox::Dataset, 3>> perThreadDataset(16); // 16 threads
+
+	std::vector<std::pair<u32, u32>> aiMatches;
+	for (u32 i = 0; i < m_AIs.size(); ++i) {
+		for (u32 j = 0; j < m_AIs.size(); ++j) {
+			if (i != j)
+				aiMatches.push_back(std::make_pair(i, j));
+		}
+	}
+
+	std::atomic_uint gameIterator = 0;
+	std::mutex printMutex;
+	u32 printIndex = 0;
 
 	std::for_each(Tournament::ExecPolicy, perThreadDataset.begin(), perThreadDataset.end(), [&](auto& threadSafeDataset) {
 		std::vector<void*> perThreadAIContext(m_AIs.size());
@@ -28,16 +40,19 @@ void Tournament::generateDataset(const sevenWD::GameContext& context, u32 datase
 			perThreadAIContext[i] = m_AIs[i]->createPerThreadContext();
 		}
 
-		while (m_numGameInDataset < datasetSize) {
-			// Match every AIs against every others
-			for (u32 i = 0; i < m_AIs.size(); ++i) {
-				for (u32 j = 0; j < m_AIs.size(); ++j) {
-					if (i != j)
-						playOneGame(context, threadSafeDataset, i, j, perThreadAIContext[i], perThreadAIContext[j]);
-				}
-			}
+		while(true) {
+			u32 nextGameIndex = gameIterator.fetch_add(1);
+			if (nextGameIndex >= numGameToPlay)
+				break;
 
-			std::cout << m_numGameInDataset << " / " << datasetSize << std::endl;
+			auto [i, j] = aiMatches[nextGameIndex % aiMatches.size()];
+
+			playOneGame(context, threadSafeDataset, i, j, perThreadAIContext[i], perThreadAIContext[j]);
+
+			{
+				std::lock_guard<std::mutex> lock(printMutex);
+				std::cout << printIndex++ << " / " << numGameToPlay << "\r" << std::flush;
+			}
 		}
 
 		for (size_t i = 0; i < m_AIs.size(); ++i) {
@@ -77,7 +92,7 @@ void Tournament::generateDatasetFromAI(const sevenWD::GameContext& context, seve
 			perThreadAIContext[i] = m_AIs[i]->createPerThreadContext();
 		}
 
-		while (m_numGameInDataset < datasetSize) {
+		while (m_numGamePlayed < datasetSize) {
 			// Match the last AI against every others
 			for (u32 i = 0; i < m_AIs.size() - 1; ++i) {
 				u32 aiIndex[2] = { u32(m_AIs.size() - 1), i };
@@ -141,6 +156,7 @@ void Tournament::playOneGame(const sevenWD::GameContext& context, std::array<ML_
 	m_numWins[aiIndex[1]].second++;
 	m_avgThinkingMsPerGame[aiIndex[0]] += thinkingTime[0];
 	m_avgThinkingMsPerGame[aiIndex[1]] += thinkingTime[1];
+	m_numGamePlayed++;
 	m_statsMutex.unlock();
 
 	for (u32 age = 0; age < 3; ++age) {
@@ -194,6 +210,7 @@ void Tournament::resetTournament(float percentageOfGamesToKeep)
 		m_dataset[i].m_data.resize(size_t(((double)m_dataset[i].m_data.size()) * percentageOfGamesToKeep));
 	}
 
+	m_numGamePlayed = 0;
 	m_numWins.clear();
 	m_winTypes.clear();
 	m_avgThinkingMsPerGame.clear();
@@ -212,4 +229,66 @@ void Tournament::print() const
 		std::cout << m_AIs[i]->getName() << " : Winrate " << std::setprecision(2) << float(m_numWins[i].first) / m_numWins[i].second << " ; "
 			      << m_numWins[i].first << " / " << m_numWins[i].second << "(" << m_winTypes[i].civil << "," << m_winTypes[i].military << "," << m_winTypes[i].science << "), time : " << m_avgThinkingMsPerGame[i] / m_numWins[i].second << std::endl;
 	}
+}
+
+void Tournament::serializeDataset(const std::string& filenamePrefix) const
+{
+	using namespace std::filesystem;
+	namespace fs = std::filesystem;
+
+	const std::string outDir = "../7wDataset";
+	std::error_code ec;
+	fs::create_directories(outDir, ec);
+	if (ec) {
+		std::cout << "Failed to create dataset directory '" << outDir << "': " << ec.message() << std::endl;
+		return;
+	}
+
+	for (u32 age = 0; age < 3; ++age) {
+		std::stringstream ss;
+		ss << outDir << "/" << filenamePrefix << "dataset_age" << age << ".bin";
+		std::string path = ss.str();
+
+		bool ok = m_dataset[age].saveToFile(path);
+		if (!ok) {
+			std::cout << "Failed to save dataset for age " << age << " to '" << path << "'" << std::endl;
+		}
+		else {
+			std::cout << "Saved dataset (age " << age << ") to '" << path << "'" << std::endl;
+		}
+	}
+}
+
+void Tournament::deserializeDataset(const std::string& filenamePrefix) const
+{
+	using namespace std::filesystem;
+
+	// method is const in header; cast away const to update internal datasets
+	Tournament* self = const_cast<Tournament*>(this);
+
+	const std::string inDir = "../7wDataset";
+	for (u32 age = 0; age < 3; ++age) {
+		std::stringstream ss;
+		ss << inDir << "/" << filenamePrefix << "dataset_age" << age << ".bin";
+		std::string path = ss.str();
+
+		if (!exists(path)) {
+			std::cout << "Dataset file not found: " << path << std::endl;
+			continue;
+		}
+
+		// GameContext used for deserialization; card tables are deterministic so any seed is fine.
+		sevenWD::GameContext context(42);
+
+		bool ok = self->m_dataset[age].loadFromFile(context, path);
+		if (!ok) {
+			std::cout << "Failed to load dataset from '" << path << "'" << std::endl;
+		}
+		else {
+			std::cout << "Loaded dataset (age " << age << ") from '" << path << "' with " << self->m_dataset[age].m_data.size() << " points." << std::endl;
+		}
+	}
+
+	// update game count (atomic) to reflect loaded dataset size (use age 0 size as convention)
+	self->m_numGameInDataset = (u32)self->m_dataset[0].m_data.size();
 }

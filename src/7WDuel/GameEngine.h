@@ -229,5 +229,8 @@ namespace sevenWD
  		const char* toString(ResourceType _type);
  		const char* toString(CardType _type);
  		const char* toString(ScienceSymbol _type);
+
+		std::vector<u8> serializeGameState(const GameState& _state);
+		bool deserializeGameState(const GameContext& _context, const std::vector<u8>& _blob, GameState& _outState);
  	}
  }

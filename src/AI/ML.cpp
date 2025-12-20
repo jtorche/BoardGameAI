@@ -132,6 +132,98 @@ void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, tiny_dnn::tensor_
 }
 #endif
 
+// ---------------------------------------------------------------------------
+// Dataset serialization implementation
+// ---------------------------------------------------------------------------
+bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
+{
+	using namespace sevenWD;
+	std::ofstream os(filename, std::ios::binary);
+	if (!os.good()) return false;
+
+	// header
+	os.put('7'); os.put('W'); os.put('D'); os.put('S');
+	u8 version = 1;
+	os.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+	u32 count = (u32)m_data.size();
+	os.write(reinterpret_cast<const char*>(&count), sizeof(count));
+
+	for (const Point& pt : m_data)
+	{
+		u8 winner = (u8)pt.m_winner;
+		u8 winType = (u8)pt.m_winType;
+		os.write(reinterpret_cast<const char*>(&winner), sizeof(winner));
+		os.write(reinterpret_cast<const char*>(&winType), sizeof(winType));
+
+		std::vector<u8> blob = sevenWD::Helper::serializeGameState(pt.m_state);
+		u32 blobSize = (u32)blob.size();
+		os.write(reinterpret_cast<const char*>(&blobSize), sizeof(blobSize));
+		if (blobSize > 0)
+			os.write(reinterpret_cast<const char*>(blob.data()), blobSize);
+
+		if (!os.good()) return false;
+	}
+
+	return os.good();
+}
+
+bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, const std::string& filename)
+{
+	using namespace sevenWD;
+	std::ifstream is(filename, std::ios::binary);
+	if (!is.good()) return false;
+
+	// header
+	char magic[4];
+	is.read(magic, 4);
+	if (!is.good()) return false;
+	if (magic[0] != '7' || magic[1] != 'W' || magic[2] != 'D' || magic[3] != 'S') return false;
+
+	u8 version = 0;
+	is.read(reinterpret_cast<char*>(&version), sizeof(version));
+	if (!is.good() || version != 1) return false;
+
+	u32 count = 0;
+	is.read(reinterpret_cast<char*>(&count), sizeof(count));
+	if (!is.good()) return false;
+
+	m_data.clear();
+	m_data.reserve(count);
+
+	for (u32 i = 0; i < count; ++i)
+	{
+		u8 winner = 0;
+		u8 winType = 0;
+		is.read(reinterpret_cast<char*>(&winner), sizeof(winner));
+		is.read(reinterpret_cast<char*>(&winType), sizeof(winType));
+		if (!is.good()) return false;
+
+		u32 blobSize = 0;
+		is.read(reinterpret_cast<char*>(&blobSize), sizeof(blobSize));
+		if (!is.good()) return false;
+
+		std::vector<u8> blob(blobSize);
+		if (blobSize > 0) {
+			is.read(reinterpret_cast<char*>(blob.data()), blobSize);
+			if (!is.good()) return false;
+		}
+
+		// deserialize into a GameState constructed with provided context
+		GameState state(context);
+		if (!sevenWD::Helper::deserializeGameState(context, blob, state))
+			return false;
+
+		Point pt;
+		pt.m_state = std::move(state);
+		pt.m_winner = (u32)winner;
+		pt.m_winType = (WinType)winType;
+		m_data.push_back(std::move(pt));
+	}
+
+	return true;
+}
+
 float ML_Toolbox::evalPrecision(
 #ifdef USE_TINY_DNN
 	const std::vector<tiny_dnn::vec_t>& predictions,

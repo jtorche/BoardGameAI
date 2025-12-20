@@ -104,10 +104,11 @@ namespace sevenWD
 		if (isDraftingWonders() || m_currentAge < 2)
 			initAge3Graph(true);
 
-		// Determine cur non visible cards
-		for (CardNode& node : m_graph.m_graph)
-			pickCardAdnInitNode(node, m_graph);
-
+		if (!isDraftingWonders()) {
+			// Determine cur non visible cards
+			for (CardNode& node : m_graph.m_graph)
+				pickCardAdnInitNode(node, m_graph);
+		}
 		m_isDeterministic = true;
 	}
 

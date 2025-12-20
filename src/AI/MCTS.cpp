@@ -80,7 +80,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 				u32 depth = 0;
 				MTCS_Node* pSelectedNode = selection(pRoot, depth);
 				MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
-				auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves);
+				auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves, pThreadContext);
 				DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
 				if (pExpandedNode->m_gameState.m_winType != WinType::None) {
 					DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
@@ -219,7 +219,7 @@ MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator
 	}
 }
 
-std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves)
+std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext)
 {
 	using namespace sevenWD;
 
@@ -230,6 +230,11 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 		float reward = (state == GameController::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) : 
 			           (state == GameController::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
 		return { reward, rootPlayer };
+	}
+
+	if (m_useDNN) {
+		float score = computeScore(pNode->m_gameState.m_gameState, rootPlayer, pThreadContext);
+		return { score, rootPlayer };
 	}
 
 	GameController controller = pNode->m_gameState;

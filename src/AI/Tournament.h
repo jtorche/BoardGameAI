@@ -12,7 +12,7 @@ public:
 	Tournament();
 
 	void addAI(sevenWD::AIInterface* pAI);
-	void generateDataset(const sevenWD::GameContext& context, u32 datasetSize);
+	void generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay);
 	void generateDatasetFromAI(const sevenWD::GameContext& context, sevenWD::AIInterface* pAI, u32 datasetSize);
 	void removeWorstAI(u32 amountOfAIsToKeep);
 
@@ -22,9 +22,11 @@ public:
 	void playOneGame(const sevenWD::GameContext& context, u32 i, u32 j);
 
 	void print() const;
+	void serializeDataset(const std::string& filenamePrefix) const;
+	void deserializeDataset(const std::string& filenamePrefix) const;
 
 private:
-	static constexpr u32 NumStatesToSamplePerGame = 8;
+	static constexpr u32 NumStatesToSamplePerGame = 16;
 
 	struct WinTypeCounter {
 		u32 civil = 0;
@@ -58,6 +60,7 @@ private:
 	std::vector<sevenWD::AIInterface*> m_AIs;
 
 	std::atomic_uint m_numGameInDataset = 0;
+	std::atomic_uint m_numGamePlayed = 0;
 	std::mutex m_statsMutex;
 	std::vector<std::pair<u32, u32>> m_numWins;
 	std::vector<WinTypeCounter> m_winTypes;

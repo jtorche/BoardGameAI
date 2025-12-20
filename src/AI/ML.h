@@ -193,6 +193,9 @@ struct ML_Toolbox
 #if defined(USE_TINY_DNN)
 		void fillBatches(bool useExtraTensorData, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const;
 #endif
+
+		bool saveToFile(const std::string& filename) const;
+		bool loadFromFile(const sevenWD::GameContext& context, const std::string& filename);
 	};
 
 	static u32 generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext,

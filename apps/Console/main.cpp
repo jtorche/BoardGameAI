@@ -9,47 +9,193 @@
 #include "AI/ML.h"
 #include "AI/MCTS.h"
 #include "AI/Tournament.h"
+#include "Core/cxxopts.h"
 
-namespace sevenWD
+
+using namespace std::chrono;
+using namespace sevenWD;
+
+static sevenWD::AIInterface* createAIByName(const std::string& name)
 {
-	void costTest();
-
-	const char* toString(WinType _type)
-	{
-		switch (_type)
-		{
-		case WinType::Civil:
-			return "Civil";
-		case WinType::Military:
-			return "Military";
-		case WinType::Science:
-			return "Science";
-		default:
-			return "None";
-		}
-	}
-
-	const char* toString(Move::Action _action)
-	{
-		switch (_action)
-		{
-		case Move::Action::BuildWonder:
-			return "BuildWonder";
-		case Move::Action::Pick:
-			return "Pick";
-		case Move::Action::Burn:
-			return "Burn";
-		case Move::Action::ScienceToken:
-			return "ScienceToken";
-		default:
-			return "None";
-		}
-	}
+    // Map textual name -> AI instance. Add more mappings as needed.
+    if (name == "RandAI")
+        return new RandAI();
+    if (strstr(name.c_str(), "MonteCarloAI")) {
+		u32 numSimulations = 100;
+        sscanf_s(name.c_str(), "MonteCarloAI(%u)", &numSimulations);
+        return new MonteCarloAI(numSimulations);
+    }
+    if (strstr(name.c_str(), "MCTS_Deterministic")) {
+        u32 numMoves = 1000;
+        u32 numSimu = 20;
+        sscanf_s(name.c_str(), "MCTS_Deterministic(%u;%u)", &numMoves, &numSimu);
+        return new MCTS_Deterministic(numMoves, numSimu);
+    }
+    // Network-based AI loader: expects filename to contain network info (not handled here)
+    // Fallback: null
+    return nullptr;
 }
 
-#if 1
+int main(int argc, char** argv)
+{
+    try {
+        cxxopts::Options options("Play7WDuel", "Console tool: generate dataset or train network");
+        options.add_options()
+            ("mode", "Mode: generate or train", cxxopts::value<std::string>()->default_value("generate"))
+            ("size", "Dataset size (number of games)", cxxopts::value<uint32_t>()->default_value("100"))
+            // allow multiple --ai entries, default is two AIs (RandAI and MonteCarloAI)
+            ("ai", "AI to include in generation (repeatable). Examples: --ai=RandAI --ai=MonteCarloAI(100)",
+                 cxxopts::value<std::vector<std::string>>()->default_value("RandAI,MonteCarloAI"))
+            ("in", "Input filename prefix (for dataset or nets)", cxxopts::value<std::string>()->default_value(""))
+            ("out", "Output filename prefix (for dataset or nets)", cxxopts::value<std::string>()->default_value(""))
+            ("net", "Network type for training: BaseLine, TwoLayer8, TwoLayer64", cxxopts::value<std::string>()->default_value("TwoLayer8"))
+            ("extra", "Use extra tensor data for network", cxxopts::value<bool>()->default_value("false"))
+            ("epochs", "Training epochs", cxxopts::value<uint32_t>()->default_value("16"))
+            ("batch", "Batch size", cxxopts::value<uint32_t>()->default_value("64"))
+            ("help", "Print help");
+
+        auto result = options.parse(argc, argv);
+
+        if (result.count("help")) {
+            std::cout << options.help({ "" }) << std::endl;
+            return 0;
+        }
+
+        std::string mode = result["mode"].as<std::string>();
+        std::string outPrefix = result["out"].as<std::string>();
+        std::string inPrefix = result["in"].as<std::string>();
+
+        if (mode == "generate") {
+            uint32_t size = result["size"].as<uint32_t>();
+
+            // read multiple --ai entries
+            std::vector<std::string> aiNames = result["ai"].as<std::vector<std::string>>();
+
+            // build GameContext with time seed
+            GameContext context((unsigned)time(nullptr));
+
+            Tournament tournament;
+
+			u32 numAIsAdded = 0;
+            for (const auto& name : aiNames) {
+                sevenWD::AIInterface* p = createAIByName(name);
+                if (!p) {
+                    std::cout << "Unknown AI name: " << name << " - skipping" << std::endl;
+                    continue;
+                }
+                tournament.addAI(p);
+                numAIsAdded++;
+            }
+
+            if (numAIsAdded < 2) {
+                std::cout << "Need at least two valid AIs to generate dataset" << std::endl;
+                return 1;
+            }
+
+            if (inPrefix.empty() == false) {
+                // Load existing dataset to append to
+                tournament.deserializeDataset(inPrefix);
+			}
+
+            std::cout << "Generating dataset of " << size << " games using " << numAIsAdded << " AIs..." << std::endl;
+            tournament.generateDataset(context, size);
+            tournament.print();
+
+            tournament.serializeDataset(outPrefix);
+            // Write a copy if
+            {
+                std::stringstream ss;
+                ss << "gen_" << std::chrono::duration_cast<std::chrono::seconds>(system_clock::now().time_since_epoch()).count() << "_";
+                std::string outPrefixCpy = "copy_" + outPrefix + ss.str();
+                tournament.serializeDataset(outPrefixCpy);
+            }
+
+            std::cout << "Dataset generation complete. Files written with prefix: " << outPrefix << std::endl;
+            return 0;
+        }
+        else if (mode == "train") {
+            // Train networks from an existing serialized dataset
+            std::string netTypeStr = result["net"].as<std::string>();
+            bool useExtra = result["extra"].as<bool>();
+            uint32_t epochs = result["epochs"].as<uint32_t>();
+            uint32_t batchSize = result["batch"].as<uint32_t>();
+
+            NetworkType netType = NetworkType::Net_TwoLayer8;
+            if (netTypeStr == "BaseLine") netType = NetworkType::Net_BaseLine;
+            else if (netTypeStr == "TwoLayer8") netType = NetworkType::Net_TwoLayer8;
+            else if (netTypeStr == "TwoLayer64") netType = NetworkType::Net_TwoLayer64;
+
+            // Load datasets (3 ages) from ../7wDataset/<outPrefix>dataset_ageX.bin
+            if (outPrefix.empty()) {
+                std::cout << "For training you must provide --out <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
+                return 1;
+            }
+
+            std::string datasetDir = "../7wDataset/";
+            GameContext context(42); // deterministic card tables; seed doesn't matter for deserializing
+
+            ML_Toolbox::Dataset dataset[3];
+            for (u32 age = 0; age < 3; ++age) {
+                std::stringstream ss;
+                ss << datasetDir << outPrefix << "dataset_age" << age << ".bin";
+                std::string path = ss.str();
+                if (!std::filesystem::exists(path)) {
+                    std::cout << "Dataset file not found: " << path << std::endl;
+                    return 1;
+                }
+                bool ok = dataset[age].loadFromFile(context, path);
+                if (!ok) {
+                    std::cout << "Failed to load dataset: " << path << std::endl;
+                    return 1;
+                }
+                std::cout << "Loaded age " << age << " dataset: " << dataset[age].m_data.size() << " points." << std::endl;
+            }
+
+            // Construct nets for 3 ages
+            std::array<std::shared_ptr<BaseNN>, 3> nets = {
+                ML_Toolbox::constructNet(netType, useExtra),
+                ML_Toolbox::constructNet(netType, useExtra),
+                ML_Toolbox::constructNet(netType, useExtra)
+            };
+
+            // Train per-age in parallel (simple loop here; can be parallelized)
+            for (int age = 0; age < 3; ++age) {
+                std::cout << "Preparing batches for age " << age << " (batch size " << batchSize << ")..." << std::endl;
+                std::vector<ML_Toolbox::Batch> batches;
+                dataset[age].fillBatches(batchSize, batches, useExtra);
+                std::cout << "Training net for age " << age << " over " << epochs << " epochs, " << batches.size() << " batches." << std::endl;
+                ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get());
+            }
+
+            // Save networks to disk with generation 0 (or timestamp)
+            u32 generation = 0;
+            if (!outPrefix.empty()) {
+                // use a timestamp-based generation to avoid overwriting
+                generation = (u32)std::chrono::duration_cast<std::chrono::seconds>(system_clock::now().time_since_epoch()).count();
+            }
+
+            ML_Toolbox::saveNet(outPrefix, generation, nets);
+            std::cout << "Training complete. Networks saved with prefix: " << outPrefix << " gen=" << generation << std::endl;
+            return 0;
+        }
+        else {
+            std::cout << "Unknown mode: " << mode << ". Use 'generate' or 'train'." << std::endl;
+            return 1;
+        }
+    }
+    catch (const cxxopts::OptionException& e) {
+        std::cout << "Error parsing options: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    // return 0;
+}
+
+#if 0
 int main()
 {
+
+
 	using namespace sevenWD;
 	GameContext sevenWDContext(u32(time(nullptr)));
 
@@ -69,33 +215,9 @@ int main()
 	u32 generation;
 	Tournament tournament;
 	
-	tournament.addAI(new MCTS_Deterministic(1000, 8));
-	tournament.addAI(new MonteCarloAI(10));
+	tournament.addAI(new MonteCarloAI(100));
 
 	AIInterface* newGenAI;
-
-	//{
-	//	// Load a previous trained AI as an oppponent
-	//	auto [pAI, gen] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
-	//	pAI->m_depth = 20;
-	//	pAI->m_numSimu = 1000;
-	//	if(pAI)
-	//		tournament.addAI(pAI);
-	//}
-
-	// tournament.playOneGame(sevenWDContext, 0, 0);
-
-	//{
-	//	// Load a previous trained AI as an oppponent
-	//	auto [pAI, gen] = ML_Toolbox::loadAIFromFile<SimpleNetworkAI>(NetworkType::Net_TwoLayer8, "", false);
-	//	if (pAI) {
-	//		tournament.addAI(pAI);
-	//	}
-	//}
-
-	tournament.generateDataset(sevenWDContext, 500);
-	tournament.print();
-	return 0;
 
 	{
 		auto [pAI, gen] = ML_Toolbox::loadAIFromFile<AIType>(netType, namePrefix, useExtraTensorData);
@@ -105,7 +227,7 @@ int main()
 			setupAI(pAI);
 			generation = gen+1;
 		} else {
-			newGenAI = new MonteCarloAI(5);
+			newGenAI = new MonteCarloAI(100);
 			generation = 0;
 		}
 
@@ -119,13 +241,13 @@ int main()
 #endif
 	}
 
-	
+	tournament.deserializeDataset(std::string("test"));
 	
 	while (1)
 	{
-		tournament.resetTournament(0.f);
-		tournament.generateDatasetFromAI(sevenWDContext, newGenAI, datasetSize);
-		tournament.print();
+		tournament.resetTournament(1.0f);
+		// tournament.generateDatasetFromAI(sevenWDContext, newGenAI, datasetSize);
+		// tournament.print();
 
 		ML_Toolbox::Dataset dataset[3];
 		tournament.fillDataset(dataset);
@@ -144,11 +266,6 @@ int main()
 			std::vector<ML_Toolbox::Batch> batches;
 			dataset[i].fillBatches(64, batches, useExtraTensorData);
 			ML_Toolbox::trainNet(i, 24, batches, net[i].get());
-
-			// tiny_dnn::tensor_t data;
-			// tiny_dnn::tensor_t labels;
-			// dataset[i].fillBatches(useExtraTensorData, data, labels);
-			// ML_Toolbox::trainNet(i, 16, data, labels, net[i].get());
 		});
 
 		ML_Toolbox::saveNet(namePrefix, generation, net);
@@ -161,96 +278,6 @@ int main()
 		generation++;
 	}
 
-	return 0;
-}
-#endif
-
-#if 0
-int main()
-{
-	sevenWD::costTest();
-
-	std::cout << "Sizoef Card = " << sizeof(sevenWD::Card) << std::endl;
-	std::cout << "Sizoef GameState = " << sizeof(sevenWD::GameState) << std::endl;
-	sevenWD::GameContext sevenWDContext(u32(time(nullptr)));
-	sevenWD::GameController game(sevenWDContext);
-
-	sevenWD::MinMaxAIHeuristic* pHeuristic = ML_Toolbox::loadAIFromFile<BaseLine>(false, 0).first;
-	sevenWD::MinMaxAI* pAI = new sevenWD::MinMaxAI(pHeuristic, 6);
-
-	u32 turn = 0;
-	while (1)
-	{
-		std::cout << std::endl;
-		std::cout << "Turn " << ++turn <<" Player " << game.m_gameState.getCurrentPlayerTurn() << std::endl;
-		std::cout << "Player0 win proba = " << (pHeuristic ? pHeuristic->computeScore(game.m_gameState, 0) : 0.0f) << std::endl;
-		game.m_gameState.printGameState(std::cout) << std::endl;
-
-		std::vector<sevenWD::Move> moves;
-		game.enumerateMoves(moves);
-
-		sevenWD::Move aiMove = pAI->selectMove(sevenWDContext, game, moves);
-		std::cout << "AI move: "; game.printMove(std::cout, aiMove) << std::endl;
-
-		int moveId = 0;
-		for (sevenWD::Move move : moves) {
-			std::cout << "(" << ++moveId << ") ";
-			game.printMove(std::cout, move) << std::endl;
-		}
-
-		std::cout << "Choice : ";
-		std::cin >> moveId;
-
-		sevenWD::Move choice;
-		if (moveId == 0) {
-			choice = pAI->selectMove(sevenWDContext, game, moves); // debug
-		}
-		else {
-			choice = moves[moveId - 1];
-		}
-		bool end = game.play(moves[moveId-1]);
-
-		if (end) {
-			continue;
-		}
-
-		// sevenWD::SpecialAction action = sevenWD::SpecialAction::Nothing;
-		// if (pick == 1)
-		// 	action = state.pick(cardIndex-1);
-		// else
-		// 	state.burn(cardIndex-1);
-		// 
-		// if (action == sevenWD::SpecialAction::TakeScienceToken)
-		// {
-		// 	state.printAvailableTokens();
-		// 
-		// 	u32 tokenIndex = 0;
-		// 	std::cout << "Pick science token:";
-		// 	std::cin >> tokenIndex;
-		// 	action = state.pickScienceToken(tokenIndex-1);
-		// }
-		// 
-		// if (action == sevenWD::SpecialAction::MilitaryWin || action == sevenWD::SpecialAction::ScienceWin)
-		// {
-		// 	std::cout << "Winner is " << state.getCurrentPlayerTurn() << " (military or science win)" << std::endl;
-		// 	return 0;
-		// }
-		// 
-		// sevenWD::GameState::NextAge ageState = state.nextAge();
-		// if (ageState == sevenWD::GameState::NextAge::None)
-		// {
-		// 	if (action != sevenWD::SpecialAction::Replay)
-		// 		state.nextPlayer();
-		// }
-		// else if (ageState == sevenWD::GameState::NextAge::EndGame)
-		// {
-		// 	std::cout << "Winner is " << state.findWinner() << std::endl;
-		// 	return 0;
-		// }
-	}
-
-	std::cout << "Unit tests succeeded" << std::endl << std::endl;
-	system("pause");
 
 	return 0;
 }
