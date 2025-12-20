@@ -1093,8 +1093,8 @@ namespace sevenWD
 			_data[i++] = (T)_city.m_weakProduction.second;
 
 			T numPlayAgainWonders = 0;
-			for (u8 j = 0; j < _city.m_unbuildWonderCount; ++i) {
-				if (Helper::isReplayWonder(_city.m_unbuildWonders[i]))
+			for (u8 j = 0; j < _city.m_unbuildWonderCount; ++j) {
+				if (Helper::isReplayWonder(_city.m_unbuildWonders[j]))
 					numPlayAgainWonders += 1;
 			}
 			_data[i++] = numPlayAgainWonders;

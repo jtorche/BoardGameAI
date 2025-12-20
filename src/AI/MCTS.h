@@ -73,7 +73,12 @@ struct MCTS_Deterministic : BaseNetworkAI
 	MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt = false);
 
 	std::string getName() const override {
-		return std::string("MCTS_Deterministic") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
+		if (m_useDNN) {
+			return std::string("MCTS_Deterministic_DNN") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
+		}
+		else {
+			return std::string("MCTS_Deterministic") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
+		}
 	}
 
 	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;

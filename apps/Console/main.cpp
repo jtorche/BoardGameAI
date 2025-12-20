@@ -10,27 +10,145 @@
 #include "AI/MCTS.h"
 #include "AI/Tournament.h"
 #include "Core/cxxopts.h"
-
+#include "Core/StringUtil.h"
 
 using namespace std::chrono;
 using namespace sevenWD;
 
+static NetworkType parseNetType(const std::string& netTypeStr)
+{
+    if (netTypeStr == "BaseLine") return NetworkType::Net_BaseLine;
+    else if (netTypeStr == "TwoLayers8") return NetworkType::Net_TwoLayer8;
+    else if (netTypeStr == "TwoLayers64") return NetworkType::Net_TwoLayer64;
+    return NetworkType::Net_BaseLine;
+}
+
 static sevenWD::AIInterface* createAIByName(const std::string& name)
 {
+	using namespace StringUtil;
+
     // Map textual name -> AI instance. Add more mappings as needed.
     if (name == "RandAI")
         return new RandAI();
-    if (strstr(name.c_str(), "MonteCarloAI")) {
-		u32 numSimulations = 100;
-        sscanf_s(name.c_str(), "MonteCarloAI(%u)", &numSimulations);
+
+    if (name.rfind("MonteCarloAI", 0) == 0) {
+        u32 numSimulations = 100;
+        // expected forms: MonteCarloAI or MonteCarloAI(100)
+        std::string inner;
+        if (extractBetweenParentheses(name, inner)) {
+            if (!parseUint(trim_copy(inner), numSimulations)) {
+                std::cout << "MonteCarloAI: invalid parameter '" << inner << "'" << std::endl;
+                return nullptr;
+            }
+        }
         return new MonteCarloAI(numSimulations);
     }
-    if (strstr(name.c_str(), "MCTS_Deterministic")) {
+
+    if (name.rfind("MCTS_Simple", 0) == 0) {
+        // "MCTS_Simple(numSimu;depth;modelName;netName)" -> strict 4-part form, semicolon-separated
+        std::string inner;
+        if (!extractBetweenParentheses(name, inner)) {
+            std::cout << "MCTS_Simple: missing parameter list" << std::endl;
+            return nullptr;
+        }
+
+        auto parts = split_char(inner, ';'); // strict semicolon split
+        if (parts.size() != 4) {
+            std::cout << "MCTS_Simple: expect exactly 4 fields (numSimu;depth;modelName;netName) got " << parts.size() << std::endl;
+            return nullptr;
+        }
+
+        u32 numSimu = 0;
+        u32 depth = 0;
+        if (!parseUint(trim_copy(parts[0]), numSimu)) {
+            std::cout << "MCTS_Simple: invalid numSimu '" << parts[0] << "'" << std::endl;
+            return nullptr;
+        }
+        if (!parseUint(trim_copy(parts[1]), depth)) {
+            std::cout << "MCTS_Simple: invalid depth '" << parts[1] << "'" << std::endl;
+            return nullptr;
+        }
+
+        std::string modelName = trim_copy(parts[2]);
+        std::string netName   = trim_copy(parts[3]);
+
+        if (modelName.empty() || netName.empty()) {
+            std::cout << "MCTS_Simple: modelName and netName must not be empty" << std::endl;
+            return nullptr;
+        }
+
+        // Attempt to load network-backed AI. If load fails, do NOT silently fallback to defaults.
+        auto loaded = ML_Toolbox::loadAIFromFile<MCTS_Simple>(parseNetType(modelName), netName, false);
+        MCTS_Simple* pAI = loaded.first;
+        if (!pAI) {
+            std::cout << "MCTS_Simple: failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
+            return nullptr;
+        }
+
+        pAI->m_numSimu = numSimu;
+        pAI->m_depth = depth;
+        return pAI;
+    }
+
+    if (name.rfind("MCTS_Deterministic", 0) == 0) {
         u32 numMoves = 1000;
         u32 numSimu = 20;
-        sscanf_s(name.c_str(), "MCTS_Deterministic(%u;%u)", &numMoves, &numSimu);
-        return new MCTS_Deterministic(numMoves, numSimu);
-    }
+        std::string inner;
+
+        // If no parentheses -> use defaults
+        if (!extractBetweenParentheses(name, inner)) {
+            return new MCTS_Deterministic(numMoves, numSimu);
+        }
+
+        // Strict semicolon split for main forms
+        auto parts = split_char(inner, ';');
+
+        if (parts.size() == 2) {
+            // form: MCTS_Deterministic(numMoves;numSimu)
+            if (!parseUint(trim_copy(parts[0]), numMoves)) {
+                std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
+                return nullptr;
+            }
+            if (!parseUint(trim_copy(parts[1]), numSimu)) {
+                std::cout << "MCTS_Deterministic: invalid numSimu '" << parts[1] << "'" << std::endl;
+                return nullptr;
+            }
+            return new MCTS_Deterministic(numMoves, numSimu);
+        }
+        else if (parts.size() == 4) {
+            // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName)
+            if (!parseUint(trim_copy(parts[0]), numMoves)) {
+                std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
+                return nullptr;
+            }
+            if (!parseUint(trim_copy(parts[1]), numSimu)) {
+                std::cout << "MCTS_Deterministic: invalid numSimu '" << parts[1] << "'" << std::endl;
+                return nullptr;
+            }
+
+            std::string modelName = trim_copy(parts[2]);
+            std::string netName = trim_copy(parts[3]);
+            if (modelName.empty() || netName.empty()) {
+                std::cout << "MCTS_Deterministic: modelName and netName must not be empty" << std::endl;
+                return nullptr;
+            }
+
+            auto loaded = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(parseNetType(modelName), netName, false);
+            MCTS_Deterministic* pAI = loaded.first;
+            if (!pAI) {
+                std::cout << "MCTS_Deterministic: failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
+                return nullptr;
+            }
+            pAI->m_useDNN = true;
+            pAI->m_numMoves = numMoves;
+            pAI->m_numSampling = numSimu;
+            return pAI;
+        }
+        else {
+            std::cout << "MCTS_Deterministic: unexpected parameter count, expected 0,2 or 4 fields (got " << parts.size() << ")" << std::endl;
+            return nullptr;
+        }
+     }
     // Network-based AI loader: expects filename to contain network info (not handled here)
     // Fallback: null
     return nullptr;
@@ -44,11 +162,12 @@ int main(int argc, char** argv)
             ("mode", "Mode: generate or train", cxxopts::value<std::string>()->default_value("generate"))
             ("size", "Dataset size (number of games)", cxxopts::value<uint32_t>()->default_value("100"))
             // allow multiple --ai entries, default is two AIs (RandAI and MonteCarloAI)
-            ("ai", "AI to include in generation (repeatable). Examples: --ai=RandAI --ai=MonteCarloAI(100)",
+            ("ai", "AI to include in generation (repeatable).\nList: RandAI MonteCarloAI(numSimu) MCTS_Simple(numSimu;depth;modelName;netName) MCTS_Deterministic(numMove, numSimu)",
                  cxxopts::value<std::vector<std::string>>()->default_value("RandAI,MonteCarloAI"))
             ("in", "Input filename prefix (for dataset or nets)", cxxopts::value<std::string>()->default_value(""))
             ("out", "Output filename prefix (for dataset or nets)", cxxopts::value<std::string>()->default_value(""))
             ("net", "Network type for training: BaseLine, TwoLayer8, TwoLayer64", cxxopts::value<std::string>()->default_value("TwoLayer8"))
+            ("gen", "Generatio of the network, only impact out filename.", cxxopts::value<u32>()->default_value("0"))
             ("extra", "Use extra tensor data for network", cxxopts::value<bool>()->default_value("false"))
             ("epochs", "Training epochs", cxxopts::value<uint32_t>()->default_value("16"))
             ("batch", "Batch size", cxxopts::value<uint32_t>()->default_value("64"))
@@ -105,7 +224,7 @@ int main(int argc, char** argv)
             // Write a copy if
             {
                 std::stringstream ss;
-                ss << "gen_" << std::chrono::duration_cast<std::chrono::seconds>(system_clock::now().time_since_epoch()).count() << "_";
+                ss << "_gen" << std::chrono::duration_cast<std::chrono::seconds>(system_clock::now().time_since_epoch()).count();
                 std::string outPrefixCpy = "copy_" + outPrefix + ss.str();
                 tournament.serializeDataset(outPrefixCpy);
             }
@@ -120,14 +239,10 @@ int main(int argc, char** argv)
             uint32_t epochs = result["epochs"].as<uint32_t>();
             uint32_t batchSize = result["batch"].as<uint32_t>();
 
-            NetworkType netType = NetworkType::Net_TwoLayer8;
-            if (netTypeStr == "BaseLine") netType = NetworkType::Net_BaseLine;
-            else if (netTypeStr == "TwoLayer8") netType = NetworkType::Net_TwoLayer8;
-            else if (netTypeStr == "TwoLayer64") netType = NetworkType::Net_TwoLayer64;
-
-            // Load datasets (3 ages) from ../7wDataset/<outPrefix>dataset_ageX.bin
-            if (outPrefix.empty()) {
-                std::cout << "For training you must provide --out <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
+			NetworkType netType = parseNetType(netTypeStr);
+            // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
+            if (inPrefix.empty()) {
+                std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
                 return 1;
             }
 
@@ -137,7 +252,7 @@ int main(int argc, char** argv)
             ML_Toolbox::Dataset dataset[3];
             for (u32 age = 0; age < 3; ++age) {
                 std::stringstream ss;
-                ss << datasetDir << outPrefix << "dataset_age" << age << ".bin";
+                ss << datasetDir << inPrefix << "_dataset_age" << age << ".bin";
                 std::string path = ss.str();
                 if (!std::filesystem::exists(path)) {
                     std::cout << "Dataset file not found: " << path << std::endl;
@@ -167,13 +282,7 @@ int main(int argc, char** argv)
                 ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get());
             }
 
-            // Save networks to disk with generation 0 (or timestamp)
-            u32 generation = 0;
-            if (!outPrefix.empty()) {
-                // use a timestamp-based generation to avoid overwriting
-                generation = (u32)std::chrono::duration_cast<std::chrono::seconds>(system_clock::now().time_since_epoch()).count();
-            }
-
+            u32 generation = result["gen"].as<u32>();
             ML_Toolbox::saveNet(outPrefix, generation, nets);
             std::cout << "Training complete. Networks saved with prefix: " << outPrefix << " gen=" << generation << std::endl;
             return 0;

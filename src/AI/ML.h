@@ -57,7 +57,9 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 	};
 
 	float computeScore(const sevenWD::GameState& state, u32 maxPlayer, void* pContext) const {
-		auto& network = m_network[state.getCurrentAge()];
+		u8 age = (u8)state.getCurrentAge();
+		age = age == u8(-1) ? 0 : age;
+		auto& network = m_network[age];
 
 		const u32 tensorSize = sevenWD::GameState::TensorSize + (network->m_extraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
 
@@ -73,7 +75,7 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 #if defined(USE_TINY_DNN)
 		ThreadContext* pThreadContext  = (ThreadContext*)pContext;
 		DEBUG_ASSERT(pThreadContext == nullptr || pThreadContext->m_pThis == this);
-		tiny_dnn::vec_t output = pThreadContext ? pThreadContext->m_net[state.getCurrentAge()].predict(buffer) : network->forward(buffer);
+		tiny_dnn::vec_t output = pThreadContext ? pThreadContext->m_net[age].predict(buffer) : network->forward(buffer);
 		float player0WinProbability = output[0];
 #else
 		torch::Tensor result = network->forward(torch::from_blob(buffer.data(), { 1, tensorSize }, torch::kFloat));

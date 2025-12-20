@@ -246,7 +246,7 @@ void Tournament::serializeDataset(const std::string& filenamePrefix) const
 
 	for (u32 age = 0; age < 3; ++age) {
 		std::stringstream ss;
-		ss << outDir << "/" << filenamePrefix << "dataset_age" << age << ".bin";
+		ss << outDir << "/" << filenamePrefix << "_dataset_age" << age << ".bin";
 		std::string path = ss.str();
 
 		bool ok = m_dataset[age].saveToFile(path);
@@ -269,7 +269,7 @@ void Tournament::deserializeDataset(const std::string& filenamePrefix) const
 	const std::string inDir = "../7wDataset";
 	for (u32 age = 0; age < 3; ++age) {
 		std::stringstream ss;
-		ss << inDir << "/" << filenamePrefix << "dataset_age" << age << ".bin";
+		ss << inDir << "/" << filenamePrefix << "_dataset_age" << age << ".bin";
 		std::string path = ss.str();
 
 		if (!exists(path)) {
