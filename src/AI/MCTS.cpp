@@ -365,7 +365,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 					sampledVisits[j] += pRoot->m_children[j]->m_visits;
 					scores[j] += pRoot->m_children[j]->m_totalRewards;
 
-					u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.compteMoveFixedIndex();
+					u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex();
 					puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
 				}
 
@@ -392,7 +392,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
 		scores[i] /= sampledVisits[i];
-		puctPriors[i] /= m_numSampling;
+		puctPriors[_moves[i].computeMoveFixedIndex()] /= m_numSampling;
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];
 			bestIndex = i;

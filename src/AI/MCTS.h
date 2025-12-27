@@ -128,6 +128,8 @@ struct MCTS_Zero : BaseNetworkAI
 		}
 	}
 
+	bool needPUCTPriors() const override { return true; }
+
 	void initPUCTPriors(MTCS_Node* pNode, void* pThreadContext) const;
 	void initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext);
 	MTCS_Node* selection(MTCS_Node* pNode, u32& depth);

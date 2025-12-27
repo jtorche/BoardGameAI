@@ -12,6 +12,8 @@ enum class NetworkType {
 	Net_TwoLayer8,
 	Net_TwoLayer24,
 	Net_TwoLayer64,
+	Net_TwoLayer16_PUCT,
+	Net_TwoLayer64_PUCT,
 };
 
 struct BaseNN 
@@ -26,6 +28,8 @@ struct BaseNN
 		case NetworkType::Net_TwoLayer8: return "TwoLayers8";
 		case NetworkType::Net_TwoLayer24: return "TwoLayers24";
 		case NetworkType::Net_TwoLayer64: return "TwoLayers64";
+		case NetworkType::Net_TwoLayer16_PUCT: return "TwoLayers16_PUCT";
+		case NetworkType::Net_TwoLayer64_PUCT: return "TwoLayers64_PUCT";
 		default: return "UnknownNet";
 		}
 	}
@@ -89,6 +93,7 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 
 	void* createPerThreadContext() const override {
 		static std::mutex m_mutex;
+		
 
 		if (m_network[0] && m_network[1] && m_network[2]) {
 			ThreadContext* pContext = new ThreadContext{ this };
@@ -102,9 +107,16 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 			m_mutex.unlock();
 			return pContext;
 		}
+		else if (needPUCTPriors()) {
+			ThreadContext* pContext = new ThreadContext{ this };
+			return pContext;
 
-		return nullptr;
+		}
+		else {
+			return nullptr;
+		}
 	}
+
 	void destroyPerThreadContext(void* ptr) const override { delete (ThreadContext*)ptr; }
 
 	std::string m_name;
@@ -195,9 +207,9 @@ struct ML_Toolbox
 				m_data.push_back(d);
 		}
 
-		void fillBatches(u32 batchSize, std::vector<Batch>& batches, bool useExtraTensorData) const;
+		void fillBatches(u32 batchSize, std::vector<Batch>& batches, bool useExtraTensorData, bool usePUCT) const;
 #if defined(USE_TINY_DNN)
-		void fillBatches(bool useExtraTensorData, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const;
+		void fillBatches(bool useExtraTensorData, bool usePUCT, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const;
 #endif
 
 		bool saveToFile(const std::string& filename) const;
@@ -290,6 +302,29 @@ struct TwoLayers : BaseNN
 using TwoLayers64 = TwoLayers<64>;
 using TwoLayers24 = TwoLayers<24>;
 using TwoLayers8 = TwoLayers<8>;
+
+#ifdef USE_TINY_DNN
+
+template<u32 SecondLayerSize>
+struct TwoLayersPUCT : BaseNN
+{
+	TwoLayersPUCT(NetworkType netType)
+		: BaseNN(netType, true)
+	{
+		u32 tensorSize = sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize;
+
+		m_net << tiny_dnn::fully_connected_layer(tensorSize, SecondLayerSize)
+			<< tiny_dnn::relu_layer()
+			<< tiny_dnn::fully_connected_layer(SecondLayerSize, 1 + sevenWD::GameController::cMaxNumMoves)
+			<< tiny_dnn::sigmoid_layer();
+	}
+};
+
+#else
+
+TODO
+
+#endif
 
 #ifdef USE_TINY_DNN
 

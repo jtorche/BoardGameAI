@@ -47,7 +47,7 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 void ML_Toolbox::Dataset::fillBatches(
 	u32 batchSize,
 	std::vector<Batch>& batches,
-	bool useExtraTensorData) const
+	bool useExtraTensorData, bool usePUCT) const
 {
 	using namespace sevenWD;
 
@@ -65,8 +65,13 @@ void ML_Toolbox::Dataset::fillBatches(
 			if (useExtraTensorData)
 				m_data[j].m_state.fillExtraTensorData(input.data() + GameState::TensorSize);
 
-			tiny_dnn::vec_t label(1);
+			tiny_dnn::vec_t label(1 + (usePUCT ? GameController::cMaxNumMoves : 0));
 			label[0] = (m_data[j].m_winner == 0) ? 1.0f : 0.0f;
+			if (usePUCT) {
+				for (u32 k = 0; k < GameController::cMaxNumMoves; ++k) {
+					label[1 + k] = m_data[j].m_puctPriors[k];
+				}
+			}
 
 			batchInputs.push_back(std::move(input));
 			batchLabels.push_back(std::move(label));
@@ -109,7 +114,7 @@ void ML_Toolbox::Dataset::fillBatches(
 }
 
 #ifdef USE_TINY_DNN
-void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const
+void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, bool usePUCT, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const
 {
 	outData.clear();
 	outLabels.clear();
@@ -450,6 +455,10 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 		return std::make_shared<TwoLayers24>(type, hasExtraData);
 	case NetworkType::Net_TwoLayer64:
 		return std::make_shared<TwoLayers64>(type, hasExtraData);
+	case NetworkType::Net_TwoLayer16_PUCT:
+		return std::make_shared<TwoLayersPUCT<16>>(type);
+	case NetworkType::Net_TwoLayer64_PUCT:
+		return std::make_shared<TwoLayersPUCT<64>>(type);
 	default:
 		return nullptr;
 	}

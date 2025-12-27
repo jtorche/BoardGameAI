@@ -21,6 +21,8 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     else if (netTypeStr == "TwoLayers8") return NetworkType::Net_TwoLayer8;
     else if (netTypeStr == "TwoLayers24") return NetworkType::Net_TwoLayer24;
     else if (netTypeStr == "TwoLayers64") return NetworkType::Net_TwoLayer64;
+    else if (netTypeStr == "TwoLayers16_PUCT") return NetworkType::Net_TwoLayer16_PUCT;
+    else if (netTypeStr == "TwoLayers64_PUCT") return NetworkType::Net_TwoLayer64_PUCT;
     return NetworkType::Net_BaseLine;
 }
 
@@ -314,6 +316,7 @@ int main(int argc, char** argv)
             };
 
 			NetworkType netType = parseNetType(netTypeStr);
+			bool isPUCT = netType == NetworkType::Net_TwoLayer16_PUCT || netType == NetworkType::Net_TwoLayer64_PUCT;
             // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
@@ -355,7 +358,7 @@ int main(int argc, char** argv)
             std::vector<int> ages = { 0, 1, 2 };
             std::for_each(std::execution::par, ages.begin(), ages.end(), [&](int age) {
                 std::vector<ML_Toolbox::Batch> batches;
-                dataset[age].fillBatches(batchSizes[age], batches, useExtra);
+                dataset[age].fillBatches(batchSizes[age], batches, useExtra, isPUCT);
                 std::cout << "Training net for age " << age << " over " << epochs << " epochs, " << batches.size() << " batches." << std::endl;
                 ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get(), alphas[age]);
             });

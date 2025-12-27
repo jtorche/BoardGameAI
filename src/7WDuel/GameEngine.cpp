@@ -1146,12 +1146,42 @@ namespace sevenWD
 	template<typename T>
 	void GameState::fillExtraTensorData(T* _data) const
 	{
-		_data[0] = (T)0; // reserved to present other game states
-		_data++;
-		for (u32 i = 0; i < m_graph.m_numPlayableCards; ++i)
-			fillTensorDataForPlayableCard(_data + i * TensorSizePerPlayableCard, i, m_playerTurn);
-		for (u32 i = m_graph.m_numPlayableCards; i < 6; ++i)
-			memset(_data + i * TensorSizePerPlayableCard, 0, TensorSizePerPlayableCard * sizeof(T));
+		memset(_data, 0, ExtraTensorSize * sizeof(T));
+
+		switch (m_state) {
+		case State::DraftWonder:
+			break;
+		case State::Play:
+			_data[0] = (T)0;
+			_data++;
+
+			for (u32 i = 0; i < m_graph.m_numPlayableCards; ++i)
+				fillTensorDataForPlayableCard(_data + i * TensorSizePerPlayableCard, i, m_playerTurn);
+
+			break;
+		case State::PickScienceToken:
+		case State::GreatLibraryTokenThenReplay:
+		case State::GreatLibraryToken:
+			static_assert(u32(ScienceToken::Count) * 5 + 1 <= ExtraTensorSize);
+			_data[0] = (T)1; // indicate science token picking
+			_data++;
+			{
+				u32 poolBegin = m_state == State::PickScienceToken ? 0 : 5;
+				u32 poolEnd = m_state == State::PickScienceToken ? m_numScienceToken : poolBegin + 3;
+				for (u32 i = poolBegin; i < poolEnd; ++i)
+				{
+					for (u32 j = 0; j < u32(ScienceToken::Count); ++j) {
+						if (m_scienceTokens[i] == ScienceToken(j))
+							_data[(i - poolBegin) * u32(ScienceToken::Count) + j] = (T)1;
+						else
+							_data[(i - poolBegin) * u32(ScienceToken::Count) + j] = (T)0;
+					}
+				}
+			}
+			break;
+		default:
+			break;
+		}
 	}
 
 	template void GameState::fillExtraTensorData<float>(float* _data) const;

@@ -12,13 +12,12 @@ namespace sevenWD
 		u8 wonderIndex = u8(-1);
 		u8 additionalId = u8(-1);
 
-		u32 compteMoveFixedIndex() const
+		u32 computeMoveFixedIndex() const
 		{
 			DEBUG_ASSERT(playableCard < 6 || playableCard == u8(-1));
 			switch (action)
 			{
 			case Action::ScienceToken:
-				return 0;
 			case Action::Pick:
 			case Action::DraftWonder:
 				return playableCard;

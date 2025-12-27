@@ -174,8 +174,6 @@ namespace sevenWD
 			u8 m_numPlayableCards;
 			u8 m_numAvailableAgeCards = 0;
 			u8 m_numAvailableGuildCards = 0;
-
-
 		};
 		GraphSetup m_graphsPerAge[3]; // one per age
 		GraphSetup m_graph; // active graph
