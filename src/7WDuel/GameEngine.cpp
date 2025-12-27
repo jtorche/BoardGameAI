@@ -1141,6 +1141,68 @@ namespace sevenWD
 	template u32 GameState::fillTensorData<int16_t>(int16_t* _data, u32 _mainPlayer) const;
 
 	template<typename T>
+	void GameState::fillExtraTensorData(T* _data) const
+	{
+		for (u32 i = 0; i < GameContext::MaxCardsPerAge; ++i) {
+			_data[i] = 0;
+			_data[i+GameContext::MaxCardsPerAge] = -1;
+		}
+
+		// Cards that have already been picked/burn by a player
+		for (u32 i = 0; i < m_numPlayedAgeCards; ++i)
+			_data[m_playedAgeCards[i]] = -1;
+
+		// Cards that have not been revealed in the graph
+		// active graph usage
+		for (u32 i = 0; i < m_graph.m_numAvailableAgeCards; ++i)
+			_data[m_graph.m_availableAgeCards[i]] = 1;
+
+		// go through the graph, process visible cards
+		std::array<bool, 20> visitedNodes = {};
+
+		u32 numNodeToExplore = m_graph.m_numPlayableCards;
+		std::array <u8, 6> nodesToExplore = m_graph.m_playableCards;
+		u32 nextNumNodeToExplore = 0;
+		std::array <u8, 6> nextNodesToExplore = {};
+		
+		u32 depth = 0;
+		while (numNodeToExplore > 0)
+		{
+			for (u32 i = 0; i < numNodeToExplore; ++i)
+			{
+				if (m_graph.m_graph[nodesToExplore[i]].m_visible)
+				{
+					u8 id = m_context->getCard(m_graph.m_graph[nodesToExplore[i]].m_cardId).getAgeId();
+					_data[id] = 2; // card visible in the graph
+					_data[GameContext::MaxCardsPerAge + id] = (T)(depth + 1);
+				}
+
+				auto gatherParent = [&](u8 parent) {
+					if (parent != CardNode::InvalidNode)
+					{
+						if (!visitedNodes[parent])
+						{
+							visitedNodes[parent] = true;
+							nextNodesToExplore[nextNumNodeToExplore++] = parent;
+						}
+					}
+				};
+				gatherParent(m_graph.m_graph[nodesToExplore[i]].m_parent0);
+				gatherParent(m_graph.m_graph[nodesToExplore[i]].m_parent1);
+				
+			}
+
+			numNodeToExplore = nextNumNodeToExplore;
+			nodesToExplore = nextNodesToExplore;
+			nextNumNodeToExplore = 0;
+			depth++;
+		}
+	}
+
+	template void GameState::fillExtraTensorData<float>(float* _data) const;
+	template void GameState::fillExtraTensorData<int16_t>(int16_t* _data) const;
+
+	template<typename T>
 	void GameState::fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const
 	{
 		int i = 0;

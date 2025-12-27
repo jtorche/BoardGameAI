@@ -114,6 +114,10 @@ namespace sevenWD
 		template<typename T>
 		u32 fillTensorData(T* _data, u32 _mainPlayer) const;
 
+		static const u32 ExtraTensorSize = GameContext::MaxCardsPerAge * 2;
+		template<typename T>
+		void fillExtraTensorData(T* _data) const;
+
 		static const u32 TensorSizePerPlayableCard = 25;
 		template<typename T>
 		void fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const;
