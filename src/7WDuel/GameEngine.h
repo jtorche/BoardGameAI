@@ -110,13 +110,17 @@ namespace sevenWD
 		std::ostream& printPlayablCards(std::ostream& out) const;
 		std::ostream& printAvailableTokens(std::ostream& out) const;
 
-		static const u32 TensorSize = 167;
+		static const u32 TensorSize = 157;
 		template<typename T>
 		u32 fillTensorData(T* _data, u32 _mainPlayer) const;
 
 		static const u32 ExtraTensorSize = GameContext::MaxCardsPerAge * 2;
 		template<typename T>
 		void fillExtraTensorData(T* _data) const;
+
+		static const u32 TensorSizePerPlayableCard = 25;
+		template<typename T>
+		void fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const;
 
 		int getMilitary() const { return m_military; }
 
@@ -200,6 +204,7 @@ namespace sevenWD
 		void initWonderDraft();
 		void finishWonderDraft();
 		void pickCardAdnInitNode(CardNode& _node, GraphSetup& graph);
+		u32 computeNumDicoveriesIfPicked(u32 playableCardId) const;
 
 		template<typename T>
 		u8 pickCardIndex(T& _availableCards, u8& _numAvailableCard)

@@ -170,46 +170,4 @@ namespace sevenWD
 
 		return out;
 	}
-
-	//----------------------------------------------------------------------------
-	template<typename T>
-	void Card::fillTensor(T* pData) const
-	{
-		int i = 0;
-
-		for (u32 j = 0; j < u32(CardType::Count); ++j)
-			pData[i + j] = (T)(((u32)m_type == j) ? 1 : 0);
-		i += u32(CardType::Count);
-
-		for (u32 j = 0; j < u32(RT::Count); ++j)
-			pData[i + j] = m_production[j];
-		i += u32(RT::Count);
-
-		pData[i++] = m_goldCost;
-		pData[i++] = m_goldReward;
-		pData[i++] = m_victoryPoints;
-		pData[i++] = m_military;
-		pData[i++] = (T)(m_isWeakProduction ? 1:0);
-		pData[i++] = (T)(m_isResourceDiscount ? 1:0);
-		pData[i++] = (T)(m_goldPerNumberOfCardColorTypeCard ? 1:0);
-		pData[i++] = (T)(m_extraTurn ? 1:0);
-
-		for (u32 j = 0; j < u32(RT::Count); ++j)
-			pData[i + j] = m_cost[j];
-		i += u32(RT::Count);
-
-		for (u32 j = 0; j < u32(ScienceSymbol::Count); ++j)
-			pData[i + j] = (T)(((u32)m_science == j) ? 1 : 0);
-		i += u32(ScienceSymbol::Count);
-
-		const u32 maxRange = std::max(u32(CardType::Count) + 1, u32(ScienceToken::Count));
-		for (u32 j = 0; j < maxRange; ++j)
-			pData[i + j] = (T)((m_secondaryType == j) ? 1 : 0);
-
-		i += maxRange;
-		// std::cout << i << std::endl;
-	}
-
-	template void Card::fillTensor<float>(float* pData) const;
-	template void Card::fillTensor<int16_t>(int16_t* pData) const;
 }

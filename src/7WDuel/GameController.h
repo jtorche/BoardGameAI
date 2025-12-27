@@ -23,9 +23,15 @@ namespace sevenWD
 
 	struct GameController
 	{
-		GameController(const GameContext& _context) : m_gameState(_context)
+		GameController(const GameContext& _context, bool autoDraftWonders = false) : m_gameState(_context)
 		{
 			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
+			if (autoDraftWonders) {
+				while (m_gameState.isDraftingWonders()) {
+					m_gameState.draftWonder(0);
+				}
+				m_state = State::Play;
+			}
 		}
 
 		template<typename Fun>

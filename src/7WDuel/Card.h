@@ -42,11 +42,6 @@ namespace sevenWD
 		const char* getName() const { return m_name; }
 		std::ostream& print(std::ostream& out) const;
 
-		static constexpr u32 TensorSize = 44;
-
-		template<typename T>
-		void fillTensor(T* pData) const;
-
 	private:
 		const char* m_name = nullptr;
 		u8 m_id = u8(-1);

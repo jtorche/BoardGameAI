@@ -394,6 +394,38 @@ namespace sevenWD
 		removeFromParent(m_graph.m_graph[_nodeIndex].m_parent1);
 	}
 
+	u32 GameState::computeNumDicoveriesIfPicked(u32 _playableCardId) const
+	{
+		DEBUG_ASSERT(_playableCardId < m_graph.m_numPlayableCards);
+		u8 pickedCard = m_graph.m_playableCards[_playableCardId];
+
+		const CardNode& node = m_graph.m_graph[pickedCard];
+		u32 discoveries = 0;
+
+		// helper lambda to test a single parent (avoid double counting if parents are the same)
+		auto testParent = [&](u8 parent) {
+			const CardNode& pnode = m_graph.m_graph[parent];
+			// only non-visible parents become discoveries
+			if (pnode.m_visible != 0)
+				return;
+
+			u32 child0 = pnode.m_child0 == pickedCard ? CardNode::InvalidNode : pnode.m_child0;
+			u32 child1 = pnode.m_child1 == pickedCard ? CardNode::InvalidNode : pnode.m_child1;
+
+			if (child0 == CardNode::InvalidNode && child1 == CardNode::InvalidNode)
+				++discoveries;
+		};
+
+		if (node.m_parent0 != CardNode::InvalidNode)
+			testParent(node.m_parent0);
+		if (node.m_parent1 != CardNode::InvalidNode) {
+			DEBUG_ASSERT(node.m_parent1 != node.m_parent0);
+			testParent(node.m_parent1);
+		}
+
+		return discoveries;
+	}
+
 	GameState::NextAge GameState::nextAge()
 	{
 		if (m_graph.m_numPlayableCards == 0)
@@ -1084,10 +1116,7 @@ namespace sevenWD
 			}
 
 			for (u8 j = 0; j < u8(ResourceType::Count); ++j)
-			{
 				_data[i++] = (T)_city.m_production[j];
-				_data[i++] = (T)_city.m_bestProductionCardId[j];
-			}
 
 			_data[i++] = (T)_city.m_weakProduction.first;
 			_data[i++] = (T)_city.m_weakProduction.second;
@@ -1102,6 +1131,8 @@ namespace sevenWD
 
 		fillCity(myCity);
 		fillCity(opponentCity);
+
+		DEBUG_ASSERT(i == TensorSize);
 
 		return i;
 	}
@@ -1170,4 +1201,58 @@ namespace sevenWD
 
 	template void GameState::fillExtraTensorData<float>(float* _data) const;
 	template void GameState::fillExtraTensorData<int16_t>(int16_t* _data) const;
+
+	template<typename T>
+	void GameState::fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const
+	{
+		int i = 0;
+		const PlayerCity& myCity = m_playerCity[mainPlayer];
+		const PlayerCity& opponentCity = m_playerCity[(mainPlayer + 1) % 2];
+
+		const Card& card = getPlayableCard(playableCard);
+
+		constexpr u32 cNumCardTypes = 5;
+		_data[i++] = (T)((card.getType() == CardType::Blue) ? 1 : 0);
+		_data[i++] = (T)((card.getType() == CardType::Yellow) ? 1 : 0);
+		_data[i++] = (T)((card.getType() == CardType::Military) ? 1 : 0);
+		_data[i++] = (T)((card.getType() == CardType::Brown || card.getType() == CardType::Grey) ? 1 : 0);
+		_data[i++] = (T)((card.getType() == CardType::Guild) ? 1 : 0);
+
+		for (u32 j = 0; j < u32(RT::Count); ++j)
+			_data[i + j] = card.m_production[j];
+		i += u32(RT::Count);
+
+		for (u32 j = 0; j < u32(ScienceSymbol::Count); ++j)
+			_data[i + j] = (T)(((u32)card.m_science == j) ? 1 : 0);
+		i += u32(ScienceSymbol::Count);
+
+		u32 goldReward = 0;
+		if (card.m_chainIn != ChainingSymbol::None && myCity.m_chainingSymbols & (1u << u32(card.m_chainIn)) && myCity.ownScienceToken(ScienceToken::TownPlanning))
+			goldReward += 4;
+
+		if (card.m_goldPerNumberOfCardColorTypeCard)
+			goldReward += myCity.m_numCardPerType[card.m_secondaryType] * card.m_goldReward;
+		else if (card.m_type == CardType::Guild && card.m_secondaryType < u32(CardType::Count))
+			goldReward += std::max(myCity.m_numCardPerType[card.m_secondaryType], opponentCity.m_numCardPerType[card.m_secondaryType]) * card.m_goldReward;
+		else
+			goldReward += card.m_goldReward;
+
+		_data[i++] = (T)goldReward;
+		_data[i++] = (T)card.m_victoryPoints;
+		_data[i++] = (T)card.m_military;
+		_data[i++] = (T)((card.m_chainOut != ChainingSymbol::None) ? 1 : 0);
+		_data[i++] = (T)(card.m_isWeakProduction ? 1 : 0);
+		_data[i++] = (T)(card.m_isResourceDiscount ? 1 : 0);
+		_data[i++] = (T)myCity.computeCost(card, opponentCity);
+		// _data[i++] = (T)opponentCity.computeCost(card, myCity); TODSO when cached cost per opponent
+		_data[i++] = (T)computeNumDicoveriesIfPicked(playableCard);
+
+
+		// TODO encode secondary type if needed
+
+		DEBUG_ASSERT(i == TensorSizePerPlayableCard);
+	}
+
+	template void GameState::fillTensorDataForPlayableCard<float>(float* _data, u32 playableCard, u32 mainPlayer) const;
+	template void GameState::fillTensorDataForPlayableCard<int16_t>(int16_t* _data, u32 playableCard, u32 mainPlayer) const;
 }
