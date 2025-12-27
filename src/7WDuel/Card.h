@@ -64,6 +64,7 @@ namespace sevenWD
 		bool m_extraTurn = false;
 		u8 m_secondaryType = 0; // for additional effects (like guild cards or wonders)
 
+		friend class GameState;
 		friend struct PlayerCity;
 		friend struct DiscardedCards;
 	};
