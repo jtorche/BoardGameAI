@@ -232,7 +232,7 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 		return { reward, rootPlayer };
 	}
 
-	if (m_useDNN) {
+	if (m_heuristic == Heuristic_UseDNN) {
 		float score = computeScore(pNode->m_gameState.m_gameState, rootPlayer, pThreadContext);
 		return { score, rootPlayer };
 	}
@@ -245,8 +245,36 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 		if (scratchMoves.empty()) {
 			break;
 		}
-		Move move = scratchMoves[m_rand() % scratchMoves.size()];
-		end = controller.play(move);
+
+		bool hasMoved = false;
+		if (m_heuristic == Heuristic_NoBurnRollout) {
+			// choose randomely among non-burn moves if possible
+			u32 numNonBurnMoves = 0;
+			for (u32 i = 0; i < scratchMoves.size(); ++i) {
+				if (scratchMoves[i].action != Move::Action::Burn) {
+					++numNonBurnMoves;
+				}
+			}
+			if (numNonBurnMoves > 0) {
+				u32 index = m_rand() % numNonBurnMoves;
+				for (u32 i = 0; i < scratchMoves.size(); ++i) {
+					if (scratchMoves[i].action != Move::Action::Burn) {
+						if (index == 0) {
+							Move move = scratchMoves[i];
+							end = controller.play(move);
+							hasMoved = true;
+							break;
+						}
+						--index;
+					}
+				}
+			}
+		}
+
+		if (!hasMoved) {
+			Move move = scratchMoves[m_rand() % scratchMoves.size()];
+			end = controller.play(move);
+		}
 	}
 
 	// compute reward from root player perspective

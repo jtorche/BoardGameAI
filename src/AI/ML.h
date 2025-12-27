@@ -10,6 +10,7 @@
 enum class NetworkType {
 	Net_BaseLine,
 	Net_TwoLayer8,
+	Net_TwoLayer24,
 	Net_TwoLayer64,
 };
 
@@ -23,6 +24,7 @@ struct BaseNN
 		switch (netType) {
 		case NetworkType::Net_BaseLine: return "BaseLine";
 		case NetworkType::Net_TwoLayer8: return "TwoLayers8";
+		case NetworkType::Net_TwoLayer24: return "TwoLayers24";
 		case NetworkType::Net_TwoLayer64: return "TwoLayers64";
 		default: return "UnknownNet";
 		}
@@ -218,7 +220,7 @@ struct ML_Toolbox
 
 	static std::shared_ptr<BaseNN> constructNet(NetworkType type, bool hasExtraData);
 
-	static void trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet);
+	static void trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet, float alpha = 1e-3f);
 	static void trainNet(u32 age, u32 epoch, tiny_dnn::tensor_t& data, tiny_dnn::tensor_t& labels, BaseNN* pNet);
 	// APIs now use std::array instead of C arrays
 	static void saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, 3>& net);
@@ -284,6 +286,7 @@ struct TwoLayers : BaseNN
 #endif
 
 using TwoLayers64 = TwoLayers<64>;
+using TwoLayers24 = TwoLayers<24>;
 using TwoLayers8 = TwoLayers<8>;
 
 #ifdef USE_TINY_DNN

@@ -51,13 +51,10 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Deterministic* activeAI = nullptr;
-    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Simple>(NetworkType::Net_TwoLayer8, "", false);
-	// if (pLoadedAI)
-    // {
-    //     pLoadedAI->m_depth = 15;
-    //     pLoadedAI->m_numSimu = 200;
-	// 	activeAI = pLoadedAI;
-    // }
+    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(NetworkType::Net_TwoLayer8, "mixed", false);
+	if (pLoadedAI) {
+		activeAI = pLoadedAI;
+    }
 
     if (!activeAI) {
         activeAI = new MCTS_Deterministic(10000, 50, true);

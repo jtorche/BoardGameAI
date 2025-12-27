@@ -19,6 +19,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
 {
     if (netTypeStr == "BaseLine") return NetworkType::Net_BaseLine;
     else if (netTypeStr == "TwoLayers8") return NetworkType::Net_TwoLayer8;
+    else if (netTypeStr == "TwoLayers24") return NetworkType::Net_TwoLayer24;
     else if (netTypeStr == "TwoLayers64") return NetworkType::Net_TwoLayer64;
     return NetworkType::Net_BaseLine;
 }
@@ -97,13 +98,14 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
 
         // If no parentheses -> use defaults
         if (!extractBetweenParentheses(name, inner)) {
-            return new MCTS_Deterministic(numMoves, numSimu);
+            std::cout << "MCTS_Deterministic: invalid parenthesis" << std::endl;
+            return nullptr;
         }
 
         // Strict semicolon split for main forms
         auto parts = split_char(inner, ';');
 
-        if (parts.size() == 2) {
+        if (parts.size() <= 3) {
             // form: MCTS_Deterministic(numMoves;numSimu)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
                 std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
@@ -113,10 +115,21 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 std::cout << "MCTS_Deterministic: invalid numSimu '" << parts[1] << "'" << std::endl;
                 return nullptr;
             }
-            return new MCTS_Deterministic(numMoves, numSimu);
+
+			MCTS_Deterministic::HeuristicType heuristic = MCTS_Deterministic::Heuristic_RandomRollout;
+            if (parts.size() == 3) {
+                std::string heuristicStr = trim_copy(parts[2]);
+                if (heuristicStr == "NoBurn") {
+                    heuristic = MCTS_Deterministic::Heuristic_NoBurnRollout;
+                }
+            }
+
+            MCTS_Deterministic* pAI = new MCTS_Deterministic(numMoves, numSimu);
+			pAI->m_heuristic = heuristic;
+            return pAI;
         }
-        else if (parts.size() == 4) {
-            // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName)
+        else if (parts.size() == 5) {
+            // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName,pureMCAfterNMoves)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
                 std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
                 return nullptr;
@@ -139,7 +152,7 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 std::cout << "MCTS_Deterministic: failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
                 return nullptr;
             }
-            pAI->m_useDNN = true;
+			pAI->m_heuristic = MCTS_Deterministic::Heuristic_UseDNN;
             pAI->m_numMoves = numMoves;
             pAI->m_numSampling = numSimu;
             return pAI;
@@ -170,7 +183,9 @@ int main(int argc, char** argv)
             ("gen", "Generatio of the network, only impact out filename.", cxxopts::value<u32>()->default_value("0"))
             ("extra", "Use extra tensor data for network", cxxopts::value<bool>()->default_value("false"))
             ("epochs", "Training epochs", cxxopts::value<uint32_t>()->default_value("16"))
-            ("batch", "Batch size", cxxopts::value<uint32_t>()->default_value("64"))
+            ("batch", "Batch size as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("32;32;32"))
+            ("alpha", "Learning rate for optimizer as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("0.001;0.001;0.001"))
+            ("threads", "Num threads", cxxopts::value<uint32_t>()->default_value("16"))
             ("help", "Print help");
 
         auto result = options.parse(argc, argv);
@@ -216,8 +231,9 @@ int main(int argc, char** argv)
                 tournament.deserializeDataset(inPrefix);
 			}
 
-            std::cout << "Generating dataset of " << size << " games using " << numAIsAdded << " AIs..." << std::endl;
-            tournament.generateDataset(context, size);
+            uint32_t numThreads = result["threads"].as<uint32_t>();
+            std::cout << "Generating dataset of " << size << " games using " << numAIsAdded << " AIs with " << numThreads << " threads" << std::endl;
+            tournament.generateDataset(context, size, numThreads);
             tournament.print();
 
             tournament.serializeDataset(outPrefix);
@@ -237,7 +253,42 @@ int main(int argc, char** argv)
             std::string netTypeStr = result["net"].as<std::string>();
             bool useExtra = result["extra"].as<bool>();
             uint32_t epochs = result["epochs"].as<uint32_t>();
-            uint32_t batchSize = result["batch"].as<uint32_t>();
+
+            uint32_t batchSizes[3] = { 32, 32, 32 };
+            {
+                auto batchStrs = StringUtil::split_char(result["batch"].as<std::string>(), ';');
+                if (batchStrs.size() != 3) {
+                    std::cout << "--batch must have 3 semicolon-separated values" << std::endl;
+                    return 1;
+                }
+                for (size_t i = 0; i < 3; ++i) {
+                    try {
+                        batchSizes[i] = std::stoul(StringUtil::trim_copy(batchStrs[i]));
+                    }
+                    catch (...) {
+                        std::cout << "Invalid uint value for batch[" << i << "]: " << batchStrs[i] << std::endl;
+                        return 1;
+                    }
+                }
+            };
+
+            float alphas[3] = { 0.001f, 0.001f, 0.001f };
+            {
+                auto alphaStrs = StringUtil::split_char(result["alpha"].as<std::string>(), ';');
+                if (alphaStrs.size() != 3) {
+                    std::cout << "--alpha must have 3 semicolon-separated values" << std::endl;
+                    return 1;
+                }
+                for (size_t i = 0; i < 3; ++i) {
+                    try {
+                        alphas[i] = std::stof(StringUtil::trim_copy(alphaStrs[i]));
+                    }
+                    catch (...) {
+                        std::cout << "Invalid float value for alpha[" << i << "]: " << alphaStrs[i] << std::endl;
+                        return 1;
+                    }
+                }
+            };
 
 			NetworkType netType = parseNetType(netTypeStr);
             // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
@@ -263,6 +314,8 @@ int main(int argc, char** argv)
                     std::cout << "Failed to load dataset: " << path << std::endl;
                     return 1;
                 }
+
+                dataset[age].shuffle(context); // shuffle before training
                 std::cout << "Loaded age " << age << " dataset: " << dataset[age].m_data.size() << " points." << std::endl;
             }
 
@@ -273,14 +326,16 @@ int main(int argc, char** argv)
                 ML_Toolbox::constructNet(netType, useExtra)
             };
 
-            // Train per-age in parallel (simple loop here; can be parallelized)
-            for (int age = 0; age < 3; ++age) {
-                std::cout << "Preparing batches for age " << age << " (batch size " << batchSize << ")..." << std::endl;
+            // Train per-age in parallel
+            std::cout << "Lerning rates: " << alphas[0] << ", " << alphas[1] << ", " << alphas[2] << std::endl;
+            std::cout << "batch sizes: " << batchSizes[0] << ", " << batchSizes[1] << ", " << batchSizes[2] << std::endl;
+            std::vector<int> ages = { 0, 1, 2 };
+            std::for_each(std::execution::par, ages.begin(), ages.end(), [&](int age) {
                 std::vector<ML_Toolbox::Batch> batches;
-                dataset[age].fillBatches(batchSize, batches, useExtra);
+                dataset[age].fillBatches(batchSizes[age], batches, useExtra);
                 std::cout << "Training net for age " << age << " over " << epochs << " epochs, " << batches.size() << " batches." << std::endl;
-                ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get());
-            }
+                ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get(), alphas[age]);
+            });
 
             u32 generation = result["gen"].as<u32>();
             ML_Toolbox::saveNet(outPrefix, generation, nets);

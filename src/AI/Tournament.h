@@ -12,7 +12,7 @@ public:
 	Tournament();
 
 	void addAI(sevenWD::AIInterface* pAI);
-	void generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay);
+	void generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay, u32 numThreads);
 	void generateDatasetFromAI(const sevenWD::GameContext& context, sevenWD::AIInterface* pAI, u32 datasetSize);
 	void removeWorstAI(u32 amountOfAIsToKeep);
 

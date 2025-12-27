@@ -274,11 +274,11 @@ std::pair<float, float> ML_Toolbox::evalMeanLoss(
 	return { avgLoss, acc };
 }
 
-void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet)
+void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet, float alpha)
 {
 	// Optimizer (persistent across batches)
 	tiny_dnn::adam optimizer;
-	optimizer.alpha = float(1e-4);
+	optimizer.alpha = alpha;
 
 	BaseNN::TinyDNN_Net& net = pNet->getNetwork();
 
@@ -291,7 +291,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 		for (const auto& batch : batches) {
 			net.fit<tiny_dnn::mse, tiny_dnn::adam>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
 
-			if (batchId % 16 == 15) {
+			if (batchId % 8 == 7) {
 				std::vector<tiny_dnn::vec_t> prediction = net.predict(batch.data);
 				auto [loss, acc] = evalMeanLoss(prediction, batch.labels, {});
 				avgAcc += acc;
@@ -438,6 +438,8 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 		return std::make_shared<BaseLine>(type, hasExtraData);
 	case NetworkType::Net_TwoLayer8:
 		return std::make_shared<TwoLayers8>(type, hasExtraData);
+	case NetworkType::Net_TwoLayer24:
+		return std::make_shared<TwoLayers24>(type, hasExtraData);
 	case NetworkType::Net_TwoLayer64:
 		return std::make_shared<TwoLayers64>(type, hasExtraData);
 	default:

@@ -15,12 +15,12 @@ void Tournament::addAI(sevenWD::AIInterface* pAI)
 	m_winTypes.emplace_back(); 
 }
 
-void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay)
+void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay, u32 numThreads)
 {
 	using namespace sevenWD;
 
 	m_numGamePlayed = 0;
-	std::vector<std::array<ML_Toolbox::Dataset, 3>> perThreadDataset(16); // 16 threads
+	std::vector<std::array<ML_Toolbox::Dataset, 3>> perThreadDataset(numThreads); // 16 threads
 
 	std::vector<std::pair<u32, u32>> aiMatches;
 	for (u32 i = 0; i < m_AIs.size(); ++i) {

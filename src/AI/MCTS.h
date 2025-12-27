@@ -60,11 +60,17 @@ struct MTCS_Node {
 class thread_pool;
 struct MCTS_Deterministic : BaseNetworkAI
 {
+	enum HeuristicType {
+		Heuristic_RandomRollout,
+		Heuristic_UseDNN,
+		Heuristic_NoBurnRollout,
+	};
+
 	std::mt19937 m_rand{ (u32)time(nullptr) };
 	thread_pool* m_threadPool = nullptr;
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
-	bool m_useDNN = false;
+	HeuristicType m_heuristic = Heuristic_RandomRollout;
 
 	float C = sqrtf(2.0f); // exploration constant
 	static constexpr float cEpsilon = 1e-5f;
@@ -73,11 +79,11 @@ struct MCTS_Deterministic : BaseNetworkAI
 	MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt = false);
 
 	std::string getName() const override {
-		if (m_useDNN) {
+		if (m_heuristic == Heuristic_UseDNN) {
 			return std::string("MCTS_Deterministic_DNN") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
 		}
 		else {
-			return std::string("MCTS_Deterministic") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
+			return std::string((m_heuristic == Heuristic_NoBurnRollout) ? "MCTS_DeterministicNoBurn" : "MCTS_Deterministic") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
 		}
 	}
 
