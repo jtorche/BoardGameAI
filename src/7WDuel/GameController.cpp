@@ -6,7 +6,7 @@ namespace sevenWD
 	template<typename Fun>
 	void GameController::enumerateMoves(Fun&& _fun) const
 	{
-		if (m_state == State::DraftWonder)
+		if (m_gameState.m_state == State::DraftWonder)
 		{
 			u8 count = m_gameState.getNumDraftableWonders();
 			for (u8 i = 0; i < count; ++i)
@@ -17,7 +17,7 @@ namespace sevenWD
 				_fun(move);
 			}
 		}
-		else if (m_state == State::Play)
+		else if (m_gameState.m_state == State::Play)
 		{
 			for (u8 i = 0; i < m_gameState.getNumPlayableCards(); ++i)
 			{
@@ -98,7 +98,7 @@ namespace sevenWD
 				}
 			}
 		}
-		else if (m_state == State::PickScienceToken)
+		else if (m_gameState.m_state == State::PickScienceToken)
 		{
 			DEBUG_ASSERT(m_gameState.m_numScienceToken > 0);
 			for (u8 i = 0; i < m_gameState.m_numScienceToken; ++i)
@@ -109,13 +109,12 @@ namespace sevenWD
 				_fun(move);
 			}
 		}
-		else if (m_state == State::GreatLibraryToken || m_state == State::GreatLibraryTokenThenReplay)
+		else if (m_gameState.m_state == State::GreatLibraryToken || m_gameState.m_state == State::GreatLibraryTokenThenReplay)
 		{
 			auto tokenDraft = m_gameState.getGreatLibraryDraft();
 			for (u8 i = 0; i < 3; ++i)
 			{
-				Move move{ u8(-1), Move::Action::ScienceToken };
-				move.additionalId = m_gameState.m_context->getScienceToken(tokenDraft[i]).getId();
+				Move move{ i, Move::Action::ScienceToken };
 				_fun(move);
 			}
 		}
@@ -158,7 +157,7 @@ namespace sevenWD
 		if (_move.action == Move::DraftWonder)
 		{
 			m_gameState.draftWonder(_move.playableCard);
-			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
+			m_gameState.m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
 			return false;
 		}
 		else if (_move.action == Move::Pick)
@@ -166,7 +165,7 @@ namespace sevenWD
 			action = m_gameState.pick(_move.playableCard);
 			if (action == sevenWD::SpecialAction::TakeScienceToken && m_gameState.m_numScienceToken)
 			{
-				m_state = State::PickScienceToken;
+				m_gameState.m_state = State::PickScienceToken;
 				return false;
 			}
 		}
@@ -178,18 +177,18 @@ namespace sevenWD
 			action = m_gameState.buildWonder(_move.playableCard, _move.wonderIndex, _move.additionalId);
 			if (wonder == Wonders::GreatLibrary)
 			{
-				m_state = action == SpecialAction::Replay ? State::GreatLibraryTokenThenReplay : State::GreatLibraryToken;
+				m_gameState.m_state = action == SpecialAction::Replay ? State::GreatLibraryTokenThenReplay : State::GreatLibraryToken;
 				return false;
 			}
 		}
 		else if (_move.action == Move::ScienceToken)
 		{
-			if(m_state == State::PickScienceToken)
-				m_gameState.pickScienceToken(_move.playableCard);
-			else if (m_state == State::GreatLibraryToken || m_state == State::GreatLibraryTokenThenReplay)
+			if(m_gameState.m_state == State::PickScienceToken)
+				m_gameState.pickScienceToken(_move.playableCard, false);
+			else if (m_gameState.m_state == State::GreatLibraryToken || m_gameState.m_state == State::GreatLibraryTokenThenReplay)
 			{
-				action = m_gameState.getCurrentPlayerCity().addCard(m_gameState.m_context->getCard(_move.additionalId), m_gameState.getOtherPlayerCity());
-				if (action == SpecialAction::Nothing && m_state == State::GreatLibraryTokenThenReplay)
+				m_gameState.pickScienceToken(_move.playableCard, true);
+				if (action == SpecialAction::Nothing && m_gameState.m_state == State::GreatLibraryTokenThenReplay)
 					action = SpecialAction::Replay;
 			}
 			else
@@ -199,7 +198,7 @@ namespace sevenWD
 		if (action == sevenWD::SpecialAction::MilitaryWin || action == sevenWD::SpecialAction::ScienceWin)
 		{
 			m_winType = action == sevenWD::SpecialAction::MilitaryWin ? WinType::Military : WinType::Science;
-			m_state = m_gameState.getCurrentPlayerTurn() == 0 ? State::WinPlayer0 : State::WinPlayer1;
+			m_gameState.m_state = m_gameState.getCurrentPlayerTurn() == 0 ? State::WinPlayer0 : State::WinPlayer1;
 			return true;
 		}
 
@@ -212,11 +211,11 @@ namespace sevenWD
 		else if (ageState == sevenWD::GameState::NextAge::EndGame)
 		{
 			m_winType = WinType::Civil;
-			m_state = m_gameState.findWinner() == 0 ? State::WinPlayer0 : State::WinPlayer1;
+			m_gameState.m_state = m_gameState.findWinner() == 0 ? State::WinPlayer0 : State::WinPlayer1;
 			return true;
 		}
 
-		m_state = State::Play;
+		m_gameState.m_state = State::Play;
  
 		return false;
 	}

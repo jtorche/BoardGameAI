@@ -62,6 +62,17 @@ namespace sevenWD
 		friend struct GameController;
 
 	public:
+		enum class State : u8
+		{
+			DraftWonder,
+			Play,
+			PickScienceToken,
+			GreatLibraryToken,
+			GreatLibraryTokenThenReplay,
+			WinPlayer0,
+			WinPlayer1
+		};
+
 		GameState();
 		GameState(const GameContext& _context);
 		~GameState() = default;
@@ -86,7 +97,7 @@ namespace sevenWD
 		void nextPlayer() { m_numTurnPlayed++; m_playerTurn = (m_playerTurn + 1) % 2; }
 
 		const Card& getPlayableCard(u32 _index) const;
-		const Card& getPlayableScienceToken(u32 _index) const;
+		const Card& getPlayableScienceToken(u32 _index, bool isGreatLibraryDraft) const;
 		const Card& getCurrentPlayerWonder(u32 _index) const;
 
 		const PlayerCity& getPlayerCity(u32 _player) const { return m_playerCity[_player]; };
@@ -103,7 +114,7 @@ namespace sevenWD
 		SpecialAction pick(u32 _playableCardIndex);
 		void burn(u32 _playableCardIndex);
 		SpecialAction buildWonder(u32 _withPlayableCardIndex, u32 _wondersIndex, u8 _additionalEffect = u8(-1));
-		SpecialAction pickScienceToken(u32 _tokenIndex);
+		SpecialAction pickScienceToken(u32 _tokenIndex, bool obtainedFromGreatLibrary);
 		u32 findWinner();
 
 		std::ostream& printGameState(std::ostream& out) const;
@@ -114,13 +125,13 @@ namespace sevenWD
 		template<typename T>
 		u32 fillTensorData(T* _data, u32 _mainPlayer) const;
 
-		static const u32 ExtraTensorSize = GameContext::MaxCardsPerAge * 2;
-		template<typename T>
-		void fillExtraTensorData(T* _data) const;
-
 		static const u32 TensorSizePerPlayableCard = 25;
 		template<typename T>
 		void fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const;
+
+		static const u32 ExtraTensorSize = 1 + TensorSizePerPlayableCard * 6;
+		template<typename T>
+		void fillExtraTensorData(T* _data) const;
 
 		int getMilitary() const { return m_military; }
 
@@ -149,6 +160,7 @@ namespace sevenWD
 		std::array<ScienceToken, u8(ScienceToken::Count)> m_scienceTokens;
 		u8 m_numScienceToken = 0;
 		bool m_isDeterministic = false;
+		State m_state = State::DraftWonder;
 
 		// Each graph a pre-determined if gameState is deterministic
 		using GraphArray = std::array<CardNode, 20>;

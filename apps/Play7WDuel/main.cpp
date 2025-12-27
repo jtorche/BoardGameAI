@@ -51,10 +51,10 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Deterministic* activeAI = nullptr;
-    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(NetworkType::Net_TwoLayer8, "mixed", false);
-	if (pLoadedAI) {
-		activeAI = pLoadedAI;
-    }
+    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(NetworkType::Net_TwoLayer8, "mixed", false);
+	// if (pLoadedAI) {
+	// 	activeAI = pLoadedAI;
+    // }
 
     if (!activeAI) {
         activeAI = new MCTS_Deterministic(10000, 50, true);
@@ -110,7 +110,7 @@ int main(int argc, char** argv)
     auto isGameOver = [&gameController]() -> bool
     {
         using S = sevenWD::GameController::State;
-        return gameController.m_state == S::WinPlayer0 || gameController.m_state == S::WinPlayer1;
+        return gameController.m_gameState.m_state == S::WinPlayer0 || gameController.m_gameState.m_state == S::WinPlayer1;
     };
 
     // ---------------------------
@@ -119,7 +119,6 @@ int main(int argc, char** argv)
     struct Snapshot
     {
         sevenWD::GameState state;
-        sevenWD::GameController::State controllerState;
         sevenWD::WinType winType;
         UIGameState uiGameState;
     };
@@ -128,7 +127,7 @@ int main(int argc, char** argv)
     size_t historyIndex = 0;
 
     // Save initial state
-    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType, uiGameState });
+    history.push_back(Snapshot{ gameController.m_gameState, gameController.m_winType, uiGameState });
     historyIndex = 0;
 
     // Helper to restore a snapshot and reset transient UI
@@ -138,7 +137,6 @@ int main(int argc, char** argv)
             return;
 
         gameController.m_gameState = history[idx].state;
-        gameController.m_state = history[idx].controllerState;
         gameController.m_winType = history[idx].winType;
         uiGameState = history[idx].uiGameState;
 
@@ -195,16 +193,17 @@ int main(int argc, char** argv)
         case Action::ScienceToken:
         {
             const sevenWD::Card* tokenCard = nullptr;
-            auto ctrlState = gameController.m_state;
-            if (ctrlState == sevenWD::GameController::State::PickScienceToken)
+            auto ctrlState = gameController.m_gameState.m_state;
+            if (ctrlState == sevenWD::GameState::State::PickScienceToken)
             {
-                tokenCard = &gameController.m_gameState.getPlayableScienceToken(move.playableCard);
+                // Normal pool: index is in the main science-token pool (0-based)
+                tokenCard = &gameController.m_gameState.getPlayableScienceToken(move.playableCard, false);
             }
-            else if ((ctrlState == sevenWD::GameController::State::GreatLibraryToken ||
-                      ctrlState == sevenWD::GameController::State::GreatLibraryTokenThenReplay) &&
-                      move.additionalId != u8(-1))
+            else if (ctrlState == sevenWD::GameState::State::GreatLibraryToken ||
+                     ctrlState == sevenWD::GameState::State::GreatLibraryTokenThenReplay)
             {
-                tokenCard = &gameContext.getCard(move.additionalId);
+                // Great Library pool: index is in the Great Library sub-pool (0-based)
+                tokenCard = &gameController.m_gameState.getPlayableScienceToken(move.playableCard, true);
             }
 
             if (tokenCard)
@@ -225,7 +224,7 @@ int main(int argc, char** argv)
         if (historyIndex + 1 < history.size())
             history.resize(historyIndex + 1);
 
-        history.push_back(Snapshot{ gameController.m_gameState, gameController.m_state, gameController.m_winType, uiGameState });
+        history.push_back(Snapshot{ gameController.m_gameState, gameController.m_winType, uiGameState });
         historyIndex = history.size() - 1;
 
         // Invalidate AI score display when human plays (optional)

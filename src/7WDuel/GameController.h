@@ -11,6 +11,26 @@ namespace sevenWD
 		Action action;
 		u8 wonderIndex = u8(-1);
 		u8 additionalId = u8(-1);
+
+		u32 compteMoveFixedIndex() const
+		{
+			DEBUG_ASSERT(playableCard < 6 || playableCard == u8(-1));
+			switch (action)
+			{
+			case Action::ScienceToken:
+				return 0;
+			case Action::Pick:
+			case Action::DraftWonder:
+				return playableCard;
+			case Action::Burn:
+				return 6 + playableCard;
+			case Action::BuildWonder:
+				return 12 + wonderIndex * 6 + playableCard;
+			default:
+				DEBUG_ASSERT(0);
+				return 0;
+			}
+		}
 	};
 
 	enum class WinType
@@ -23,14 +43,18 @@ namespace sevenWD
 
 	struct GameController
 	{
+		static constexpr u32 cMaxNumMoves = 36; // 6 pickable cards * (pick + burn + buildWonders * 4) = 6*(1+1+4)=36
+
+		using State = GameState::State;
+
 		GameController(const GameContext& _context, bool autoDraftWonders = false) : m_gameState(_context)
 		{
-			m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
+			m_gameState.m_state = m_gameState.isDraftingWonders() ? State::DraftWonder : State::Play;
 			if (autoDraftWonders) {
 				while (m_gameState.isDraftingWonders()) {
 					m_gameState.draftWonder(0);
 				}
-				m_state = State::Play;
+				m_gameState.m_state = State::Play;
 			}
 		}
 
@@ -45,18 +69,6 @@ namespace sevenWD
 	
 		GameState m_gameState;
 		WinType m_winType = WinType::None;
-
-		enum class State
-		{
-			DraftWonder,
-			Play,
-			PickScienceToken,
-			GreatLibraryToken,
-			GreatLibraryTokenThenReplay,
-			WinPlayer0,
-			WinPlayer1
-		};
-		State m_state = State::Play;
 
 // #define RECORD_GAME_HISTORY
 #if defined(RECORD_GAME_HISTORY)

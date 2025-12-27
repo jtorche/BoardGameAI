@@ -91,14 +91,19 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
         return pAI;
     }
 
-    if (name.rfind("MCTS_Deterministic", 0) == 0) {
+	bool isMCTS_Deterministic = name.rfind("MCTS_Deterministic", 0) == 0;
+	bool isMCTS_Zero = name.rfind("MCTS_Zero", 0) == 0;
+    if (isMCTS_Deterministic || isMCTS_Zero) {
+
+		const char* prefix = isMCTS_Deterministic ? "MCTS_Deterministic" : "MCTS_Zero";
+
         u32 numMoves = 1000;
         u32 numSimu = 20;
         std::string inner;
 
         // If no parentheses -> use defaults
         if (!extractBetweenParentheses(name, inner)) {
-            std::cout << "MCTS_Deterministic: invalid parenthesis" << std::endl;
+            std::cout << prefix << ": invalid parenthesis" << std::endl;
             return nullptr;
         }
 
@@ -108,11 +113,11 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
         if (parts.size() <= 3) {
             // form: MCTS_Deterministic(numMoves;numSimu)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
-                std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
+                std::cout << prefix  << ": invalid numMoves '" << parts[0] << "'" << std::endl;
                 return nullptr;
             }
             if (!parseUint(trim_copy(parts[1]), numSimu)) {
-                std::cout << "MCTS_Deterministic: invalid numSimu '" << parts[1] << "'" << std::endl;
+                std::cout << prefix << ": invalid numSimu '" << parts[1] << "'" << std::endl;
                 return nullptr;
             }
 
@@ -124,41 +129,59 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 }
             }
 
-            MCTS_Deterministic* pAI = new MCTS_Deterministic(numMoves, numSimu);
-			pAI->m_heuristic = heuristic;
-            return pAI;
+            if (isMCTS_Zero) {
+                MCTS_Zero* pAI = new MCTS_Zero(numMoves, numSimu);
+				return pAI;
+            } else {
+                MCTS_Deterministic* pAI = new MCTS_Deterministic(numMoves, numSimu);
+                pAI->m_heuristic = heuristic;
+                return pAI;
+            }
         }
         else if (parts.size() == 5) {
             // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName,pureMCAfterNMoves)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
-                std::cout << "MCTS_Deterministic: invalid numMoves '" << parts[0] << "'" << std::endl;
+                std::cout << prefix << ": invalid numMoves '" << parts[0] << "'" << std::endl;
                 return nullptr;
             }
             if (!parseUint(trim_copy(parts[1]), numSimu)) {
-                std::cout << "MCTS_Deterministic: invalid numSimu '" << parts[1] << "'" << std::endl;
+                std::cout << prefix << ": invalid numSimu '" << parts[1] << "'" << std::endl;
                 return nullptr;
             }
 
             std::string modelName = trim_copy(parts[2]);
             std::string netName = trim_copy(parts[3]);
             if (modelName.empty() || netName.empty()) {
-                std::cout << "MCTS_Deterministic: modelName and netName must not be empty" << std::endl;
+                std::cout << prefix << ": modelName and netName must not be empty" << std::endl;
                 return nullptr;
             }
 
-            auto loaded = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(parseNetType(modelName), netName, false);
-            MCTS_Deterministic* pAI = loaded.first;
-            if (!pAI) {
-                std::cout << "MCTS_Deterministic: failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
-                return nullptr;
+            if (isMCTS_Zero) {
+                auto loaded = ML_Toolbox::loadAIFromFile<MCTS_Zero>(parseNetType(modelName), netName, true);
+                MCTS_Zero* pAI = loaded.first;
+                if (!pAI) {
+                    std::cout << prefix << ": failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
+                    return nullptr;
+                }
+                pAI->m_numMoves = numMoves;
+                pAI->m_numSampling = numSimu;
+                return pAI;
             }
-			pAI->m_heuristic = MCTS_Deterministic::Heuristic_UseDNN;
-            pAI->m_numMoves = numMoves;
-            pAI->m_numSampling = numSimu;
-            return pAI;
+            else {
+                auto loaded = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(parseNetType(modelName), netName, false);
+                MCTS_Deterministic* pAI = loaded.first;
+                if (!pAI) {
+                    std::cout << prefix << ": failed to load AI for model '" << modelName << "' net '" << netName << "'" << std::endl;
+                    return nullptr;
+                }
+                pAI->m_heuristic = MCTS_Deterministic::Heuristic_UseDNN;
+                pAI->m_numMoves = numMoves;
+                pAI->m_numSampling = numSimu;
+                return pAI;
+            }
         }
         else {
-            std::cout << "MCTS_Deterministic: unexpected parameter count, expected 0,2 or 4 fields (got " << parts.size() << ")" << std::endl;
+            std::cout << prefix << ": unexpected parameter count, expected 0,2 or 4 fields (got " << parts.size() << ")" << std::endl;
             return nullptr;
         }
      }

@@ -1,4 +1,3 @@
-
 #include "MCTS.h"
 #include "Core/thread_pool.h"
 
@@ -25,10 +24,10 @@ std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameConte
 
 			float s = 0;
 			if (end) {
-				if (game.m_state == GameController::State::WinPlayer0 && rootPlayer == 0) {
+				if (game.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
 					s = 1.0;
 				}
-				else if (game.m_state == GameController::State::WinPlayer1 && rootPlayer == 1) {
+				else if (game.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
 					s = 1.0;
 				}
 				else {
@@ -162,9 +161,9 @@ MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode, u32& depth)
 			MTCS_Node* pChild = pNode->m_children[i];
 
 			// Special-case: if any child is an immediate winning move for the player who played it, take it.
-			sevenWD::GameController::State st = pChild->m_gameState.m_state;
-			if (st == sevenWD::GameController::State::WinPlayer0 || st == sevenWD::GameController::State::WinPlayer1) {
-				u32 winner = (st == sevenWD::GameController::State::WinPlayer0) ? 0u : 1u;
+			sevenWD::GameController::State st = pChild->m_gameState.m_gameState.m_state;
+			if (st == sevenWD::GameState::State::WinPlayer0 || st == sevenWD::GameState::State::WinPlayer1) {
+				u32 winner = (st == sevenWD::GameState::State::WinPlayer0) ? 0u : 1u;
 				// owner is the player who made the move that produced this child
 				u32 owner = pNode->m_playerTurn;
 				if (owner == winner) {
@@ -226,9 +225,9 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 	const u32 rootPlayer = pNode->m_playerTurn;
 
 	if (pNode->m_gameState.m_winType != WinType::None) {
-		GameController::State state = pNode->m_gameState.m_state;
-		float reward = (state == GameController::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) : 
-			           (state == GameController::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
+		GameController::State state = pNode->m_gameState.m_gameState.m_state;
+		float reward = (state == GameState::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) : 
+			           (state == GameState::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
 		return { reward, rootPlayer };
 	}
 
@@ -279,10 +278,10 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 
 	// compute reward from root player perspective
 	float reward = 0.0f;
-	if (controller.m_state == GameController::State::WinPlayer0 && rootPlayer == 0) {
+	if (controller.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
 		reward = 1.0f;
 	}
-	else if (controller.m_state == GameController::State::WinPlayer1 && rootPlayer == 1) {
+	else if (controller.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
 		reward = 1.0f;
 	}
 	else {
@@ -293,6 +292,276 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 }
 
 void MCTS_Deterministic::backPropagate(MTCS_Node* pNode, float reward)
+{
+	DEBUG_ASSERT(pNode);
+
+	const u32 playoutPlayer = pNode->m_playerTurn;
+
+	MTCS_Node* pCur = pNode;
+	while (pCur != nullptr) {
+		// increment visit count for this node
+		pCur->m_visits++;
+
+		// If node has a parent, the parent.currentPlayer is the player who played the move that produced 'pCur'.
+		// Use that owner to decide reward sign: if owner == playoutPlayer use reward, else invert.
+		if (pCur->m_pParent) {
+			const u32 owner = pCur->m_pParent->m_playerTurn;
+			const float valueForOwner = (owner == playoutPlayer) ? reward : (1.0f - reward);
+			pCur->m_totalRewards += valueForOwner;
+		}
+
+		pCur = pCur->m_pParent;
+	}
+}
+
+// --------------------------------------------------- //
+// --------------------- MCTS_Zero ------------------- //
+// --------------------------------------------------- //
+MCTS_Zero::MCTS_Zero(u32 numMoves, u32 numGameState, bool mt) : BaseNetworkAI("MCTS_Zero", {}), m_numMoves(numMoves), m_numSampling(numGameState)
+{
+	if (mt) {
+		m_threadPool = new thread_pool(std::thread::hardware_concurrency());
+	}
+}
+
+std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
+{
+	using namespace sevenWD;
+
+	float maxDepthAvg;
+	std::vector<u32> sampledVisits(_moves.size(), 0);
+	std::vector<float> scores(_moves.size(), 0);
+	float puctPriors[GameController::cMaxNumMoves] = { 0 };
+	std::mutex* pMutex = nullptr;
+
+	auto processRange = [&](u32 start, u32 end)
+	{
+			core::LinearAllocator linAllocator(8 * 1024 * 1024);
+			std::vector<Move> scratchMoves;
+
+			for (u32 i = start; i < end; ++i) {
+				u32 maxDepth = 0;
+				MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
+				pRoot->m_gameState.m_gameState.makeDeterministic();
+				initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator, pThreadContext);
+				for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
+					u32 depth = 0;
+					MTCS_Node* pSelectedNode = selection(pRoot, depth);
+					MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator, pThreadContext);
+					auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves, pThreadContext);
+					DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
+					if (pExpandedNode->m_gameState.m_winType != WinType::None) {
+						DEBUG_ASSERT(simPlayer == pExpandedNode->m_pParent->m_playerTurn);
+					}
+					backPropagate(pExpandedNode, reward);
+					maxDepth = std::max(depth, maxDepth);
+				}
+
+				if (pMutex) pMutex->lock();
+
+				DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
+				maxDepthAvg += (float)maxDepth;
+				for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
+					sampledVisits[j] += pRoot->m_children[j]->m_visits;
+					scores[j] += pRoot->m_children[j]->m_totalRewards;
+
+					u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.compteMoveFixedIndex();
+					puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
+				}
+
+				if (pMutex) pMutex->unlock();
+
+				pRoot->cleanup();
+				linAllocator.reset();
+			}
+		};
+
+	if (m_threadPool) {
+		std::mutex mut;
+		pMutex = &mut;
+		m_threadPool->parallelize_loop(0u, m_numSampling, processRange, m_numSampling);
+	}
+	else {
+		processRange(0u, m_numSampling);
+	}
+
+	maxDepthAvg = maxDepthAvg / m_numSampling;
+
+	// select best move among all sampled visits
+	u32 bestIndex = 0;
+	u32 bestVisits = 0;
+	for (u32 i = 0; i < sampledVisits.size(); ++i) {
+		scores[i] /= sampledVisits[i];
+		puctPriors[i] /= m_numSampling;
+		if (sampledVisits[i] > bestVisits) {
+			bestVisits = sampledVisits[i];
+			bestIndex = i;
+		}
+	}
+
+	if (pThreadContext) {
+		ThreadContext* pTC = (ThreadContext*)pThreadContext;
+		memcpy(pTC->m_puctPriors, puctPriors, sizeof(puctPriors));
+	}
+
+	return { _moves[bestIndex], scores[bestIndex] };
+}
+
+void MCTS_Zero::initPUCTPriors(MTCS_Node* pNode, void* pThreadContext) const
+{
+	for (u32 i = 0; i < sevenWD::GameController::cMaxNumMoves; ++i) {
+		pNode->m_puctPriors[i] = 1.f / sevenWD::GameController::cMaxNumMoves;
+	}
+}
+
+void MCTS_Zero::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext)
+{
+	DEBUG_ASSERT(pNode->m_numChildren == 0);
+	DEBUG_ASSERT(pNode->m_numUnexploredMoves == 0);
+
+	pNode->m_numUnexploredMoves = 0;
+
+	if (numMoves > pNode->m_childrenStorage.size()) {
+		pNode->m_children = new MTCS_Node*[numMoves];
+	}
+
+	for (u32 i = 0; i < numMoves; ++i) {
+		sevenWD::GameController newGameState = pNode->m_gameState;
+		newGameState.play(moves[i]);
+		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, moves[i], newGameState);
+		pNode->m_children[pNode->m_numChildren++] = pChildNode;
+	}
+
+	initPUCTPriors(pNode, pThreadContext);
+}
+
+MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth)
+{
+	depth++;
+	// If leaf or has unexplored moves, stop here.
+	if (pNode->m_numChildren == 0 || pNode->m_numUnexploredMoves > 0) {
+		return pNode;
+	}
+
+	float bestPUCT = -1.0f;
+	MTCS_Node* pBestChild = nullptr;
+
+	// Parent visit count for exploration term
+	const float parentVisits = static_cast<float>(pNode->m_visits) + 1.0f;
+
+	for (u32 i = 0; i < pNode->m_numChildren; ++i) {
+		MTCS_Node* pChild = pNode->m_children[i];
+
+		// Early-out: if this child is an immediate win for the player who played it, take it.
+		sevenWD::GameController::State st = pChild->m_gameState.m_gameState.m_state;
+		if (st == sevenWD::GameState::State::WinPlayer0 || st == sevenWD::GameState::State::WinPlayer1) {
+			u32 winner = (st == sevenWD::GameState::State::WinPlayer0) ? 0u : 1u;
+			u32 owner = pNode->m_playerTurn; // player that chose this move
+			if (owner == winner) {
+				return pChild;
+			}
+		}
+
+		const float childVisits = static_cast<float>(pChild->m_visits);
+		// Q(s,a): average value from this node's perspective
+		const float qValue = pChild->m_totalRewards / (childVisits + cEpsilon);
+
+		// P(s,a) from priors
+		const float prior = pNode->m_puctPriors[i];
+
+		// U(s,a): exploration term
+		const float uValue = C * prior * sqrtf(parentVisits) / (1.0f + childVisits);
+
+		const float puct = qValue + uValue;
+
+		if (puct > bestPUCT) {
+			bestPUCT = puct;
+			pBestChild = pChild;
+		}
+	}
+
+	return selection(pBestChild, depth);
+}
+
+MTCS_Node* MCTS_Zero::expansion(MTCS_Node* pNode, core::LinearAllocator& linAllocator, void* pThreadContext)
+{
+	if (pNode->m_gameState.m_winType != sevenWD::WinType::None) {
+		return pNode;
+	}
+	else {
+		if (pNode->m_numUnexploredMoves == 0) {
+			DEBUG_ASSERT(pNode->m_numChildren == 0);
+
+			// initialize unexplored moves
+			pNode->m_numUnexploredMoves = (u16)pNode->m_gameState.enumerateMoves(pNode->m_pUnexploredMoves, (u32)pNode->m_unexploredMoveStorage.size());
+			DEBUG_ASSERT(pNode->m_numUnexploredMoves > 0);
+
+			if (pNode->m_numUnexploredMoves > pNode->m_unexploredMoveStorage.size()) {
+				pNode->m_pUnexploredMoves = new sevenWD::Move[pNode->m_numUnexploredMoves];
+				pNode->m_children = new MTCS_Node*[pNode->m_numUnexploredMoves];
+				pNode->m_gameState.enumerateMoves(pNode->m_pUnexploredMoves, pNode->m_numUnexploredMoves);
+			}
+		}
+
+		// expand
+		u32 moveIndex = m_rand() % pNode->m_numUnexploredMoves;
+		sevenWD::Move move = pNode->m_pUnexploredMoves[moveIndex];
+		// remove move from unexplored moves
+		pNode->m_pUnexploredMoves[moveIndex] = pNode->m_pUnexploredMoves[pNode->m_numUnexploredMoves - 1];
+		--pNode->m_numUnexploredMoves;
+		// create child node
+		sevenWD::GameController newGameState = pNode->m_gameState;
+		newGameState.play(move);
+		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, move, newGameState);
+		initPUCTPriors(pChildNode, pThreadContext);
+		pNode->m_children[pNode->m_numChildren++] = pChildNode;
+		return pChildNode;
+	}
+}
+
+std::pair<float, u32> MCTS_Zero::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext)
+{
+	using namespace sevenWD;
+
+	const u32 rootPlayer = pNode->m_playerTurn;
+
+	if (pNode->m_gameState.m_winType != WinType::None) {
+		GameController::State state = pNode->m_gameState.m_gameState.m_state;
+		float reward = (state == GameState::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) :
+			(state == GameState::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
+		return { reward, rootPlayer };
+	}
+
+	// if (m_heuristic == Heuristic_UseDNN) {
+	//     float score = computeScore(pNode->m_gameState.m_gameState, rootPlayer, pThreadContext);
+	//     return { score, rootPlayer };
+	// }
+
+	GameController controller = pNode->m_gameState;
+	bool end = false;
+	scratchMoves.clear();
+	while (!end) {
+		controller.enumerateMoves(scratchMoves);
+		Move move = scratchMoves[m_rand() % scratchMoves.size()];
+		end = controller.play(move);
+	}
+
+	// compute reward from root player perspective
+	float reward = 0.0f;
+	if (controller.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
+		reward = 1.0f;
+	}
+	else if (controller.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
+		reward = 1.0f;
+	}
+	else {
+		reward = 0.0f;
+	}
+
+	return { reward, rootPlayer };
+}
+
+void MCTS_Zero::backPropagate(MTCS_Node* pNode, float reward)
 {
 	DEBUG_ASSERT(pNode);
 

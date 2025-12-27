@@ -89,10 +89,10 @@ namespace sevenWD
 					game.enumerateMoves(curMoves);
 					end = game.play(curMoves[_sevenWDContext.rand()() % curMoves.size()]);
 				}
-				if (game.m_state == GameController::State::WinPlayer0 && _game.m_gameState.getCurrentPlayerTurn() == 0) {
+				if (game.m_gameState.m_state == GameState::State::WinPlayer0 && _game.m_gameState.getCurrentPlayerTurn() == 0) {
 					numWins[i]++;
 				}
-				else if (game.m_state == GameController::State::WinPlayer1 && _game.m_gameState.getCurrentPlayerTurn() == 1) {
+				else if (game.m_gameState.m_state == GameState::State::WinPlayer1 && _game.m_gameState.getCurrentPlayerTurn() == 1) {
 					numWins[i]++;
 				}
 			}

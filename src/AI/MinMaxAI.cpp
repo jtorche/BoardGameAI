@@ -29,9 +29,9 @@ namespace sevenWD
             float score;
             if (newGameState.play(_move))
             {
-                if (curPlayer == 0 && newGameState.m_state == GameController::State::WinPlayer0)
+                if (curPlayer == 0 && newGameState.m_gameState.m_state == GameState::State::WinPlayer0)
                     score = 1.0f;
-                else if (curPlayer == 1 && newGameState.m_state == GameController::State::WinPlayer1)
+                else if (curPlayer == 1 && newGameState.m_gameState.m_state == GameState::State::WinPlayer1)
                     score = 1.0f;
                 else
                     score = 0.0f;
@@ -101,9 +101,9 @@ namespace sevenWD
             float moveScore;
             if (gameTerminated)
             {
-                if (_maxPlayer == 0 && newGameState.m_state == GameController::State::WinPlayer0)
+                if (_maxPlayer == 0 && newGameState.m_gameState.m_state == GameState::State::WinPlayer0)
                     moveScore = 1.0f;
-                else if(_maxPlayer == 1 && newGameState.m_state == GameController::State::WinPlayer1)
+                else if(_maxPlayer == 1 && newGameState.m_gameState.m_state == GameState::State::WinPlayer1)
                     moveScore = 1.0f;
                 else
                     moveScore = 0.0f;

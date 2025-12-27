@@ -144,7 +144,7 @@ void Tournament::playOneGame(const sevenWD::GameContext& context, std::array<ML_
 	u32 aiIndex[2] = { i, j };
 
 	WinType winType;
-	std::vector<GameState> states[3];
+	std::vector<ML_Toolbox::Dataset::Point> states[3];
 	double thinkingTime[2];
 	u32 winner = ML_Toolbox::generateOneGameDatasSet(context, AIs, AIThreadContexts, states, winType, thinkingTime);
 
@@ -166,8 +166,9 @@ void Tournament::playOneGame(const sevenWD::GameContext& context, std::array<ML_
 
 		std::shuffle(turns.begin(), turns.end(), context.rand());
 		for (u32 t = 0; t < std::min(NumStatesToSamplePerGame, (u32)states[age].size()); ++t) {
-			ML_Toolbox::Dataset::Point p{ states[age][turns[t]], winner, winType };
-			threadSafeDataset[age].m_data.push_back(p);
+			states[age][turns[t]].m_winner = winner;
+			states[age][turns[t]].m_winType = winType;
+			threadSafeDataset[age].m_data.push_back(states[age][turns[t]]);
 		}
 	}
 

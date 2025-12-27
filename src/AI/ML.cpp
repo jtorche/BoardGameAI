@@ -1,7 +1,7 @@
 #include "ML.h"
 
 u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext, 
-	sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<sevenWD::GameState>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2])
+	sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2])
 {
 	using namespace sevenWD;
 	GameController game(sevenWDContext);
@@ -9,12 +9,14 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 	thinkingTime[0] = 0.0;
 	thinkingTime[1] = 0.0;
 
+	u32 prevPlayerTurn = u32(-1);
 	std::vector<Move> moves;
 	Move move;
 	do
 	{
-		if (game.m_gameState.getNumTurnPlayed() > 0) {
-			data[game.m_gameState.getCurrentAge()].push_back(game.m_gameState);
+		if (prevPlayerTurn != u32(-1) && game.m_gameState.getNumTurnPlayed() > 0) {
+			data[game.m_gameState.getCurrentAge()].push_back({ game.m_gameState });
+			AIs[prevPlayerTurn]->fillPUCTPriors(AIThreadContexts[prevPlayerTurn], data[game.m_gameState.getCurrentAge()].back().m_puctPriors);
 		}
 
 		u32 curPlayerTurn = game.m_gameState.getCurrentPlayerTurn();
@@ -34,10 +36,12 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 			duration<double, std::milli> ms_double = t2 - t1;
 			thinkingTime[curPlayerTurn] += ms_double.count();
 		}
+
+		prevPlayerTurn = curPlayerTurn;
 	} while (!game.play(move));
 
 	winType = game.m_winType;
-	return game.m_state == GameController::State::WinPlayer0 ? 0 : 1;
+	return game.m_gameState.m_state == GameState::State::WinPlayer0 ? 0 : 1;
 }
 
 void ML_Toolbox::Dataset::fillBatches(
@@ -143,7 +147,7 @@ bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
 
 	// header
 	os.put('7'); os.put('W'); os.put('D'); os.put('S');
-	u8 version = 1;
+	u8 version = 2;
 	os.write(reinterpret_cast<const char*>(&version), sizeof(version));
 
 	u32 count = (u32)m_data.size();
@@ -155,6 +159,7 @@ bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
 		u8 winType = (u8)pt.m_winType;
 		os.write(reinterpret_cast<const char*>(&winner), sizeof(winner));
 		os.write(reinterpret_cast<const char*>(&winType), sizeof(winType));
+		os.write(reinterpret_cast<const char*>(pt.m_puctPriors), sizeof(pt.m_puctPriors));
 
 		std::vector<u8> blob = sevenWD::Helper::serializeGameState(pt.m_state);
 		u32 blobSize = (u32)blob.size();
@@ -182,7 +187,7 @@ bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, cons
 
 	u8 version = 0;
 	is.read(reinterpret_cast<char*>(&version), sizeof(version));
-	if (!is.good() || version != 1) return false;
+	if (!is.good() || version != 2) return false;
 
 	u32 count = 0;
 	is.read(reinterpret_cast<char*>(&count), sizeof(count));
@@ -195,8 +200,10 @@ bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, cons
 	{
 		u8 winner = 0;
 		u8 winType = 0;
+		float puctPriors[GameController::cMaxNumMoves] = { 0.0f };
 		is.read(reinterpret_cast<char*>(&winner), sizeof(winner));
 		is.read(reinterpret_cast<char*>(&winType), sizeof(winType));
+		is.read(reinterpret_cast<char*>(puctPriors), sizeof(puctPriors));
 		if (!is.good()) return false;
 
 		u32 blobSize = 0;
@@ -218,6 +225,7 @@ bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, cons
 		pt.m_state = std::move(state);
 		pt.m_winner = (u32)winner;
 		pt.m_winType = (WinType)winType;
+		memcpy(pt.m_puctPriors, puctPriors, sizeof(puctPriors));
 		m_data.push_back(std::move(pt));
 	}
 

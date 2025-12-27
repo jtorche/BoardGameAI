@@ -56,6 +56,7 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 	struct ThreadContext {
 		const BaseNetworkAI* m_pThis;
 		BaseNN::TinyDNN_Net m_net[3];
+		float m_puctPriors[sevenWD::GameController::cMaxNumMoves] = { 0.f }; // Priors for PUCT search (used to train a NN-based MCTS AI)
 	};
 
 	float computeScore(const sevenWD::GameState& state, u32 maxPlayer, void* pContext) const {
@@ -129,7 +130,7 @@ struct SimpleNetworkAI : BaseNetworkAI
 			sevenWD::GameController tmpController = controller;
 			bool endGame = tmpController.play(_moves[i]);
 			if (endGame) {
-				u32 winner = (tmpController.m_state == sevenWD::GameController::State::WinPlayer0) ? 0 : 1;
+				u32 winner = (tmpController.m_gameState.m_state == sevenWD::GameState::State::WinPlayer0) ? 0 : 1;
 				scores[i] = (controller.m_gameState.getCurrentPlayerTurn() == winner) ? 1.0f : 0.0f;
 			}
 			else {
@@ -178,6 +179,7 @@ struct ML_Toolbox
 			sevenWD::GameState m_state;
 			u32 m_winner;
 			sevenWD::WinType m_winType;
+			float m_puctPriors[sevenWD::GameController::cMaxNumMoves];
 		};
 
 		std::vector<Point> m_data;
@@ -203,7 +205,7 @@ struct ML_Toolbox
 	};
 
 	static u32 generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext,
-		sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<sevenWD::GameState>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2]);
+		sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2]);
 
 #ifdef USE_TINY_DNN
 	static void fillTensors(const Dataset& dataset, std::vector<tiny_dnn::vec_t>& outData, std::vector<tiny_dnn::vec_t>& outLabels);

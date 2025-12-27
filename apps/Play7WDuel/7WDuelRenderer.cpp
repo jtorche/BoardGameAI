@@ -92,7 +92,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
             }
         };
 
-        std::string ctrlText = std::string("Controller: ") + stateToStr(gc->m_state) +
+        std::string ctrlText = std::string("Controller: ") + stateToStr(gc->m_gameState.m_state) +
                                "  WinType: " + winToStr(gc->m_winType);
         // draw below the player-turn text
         m_renderer->DrawText(ctrlText, 20.0f, 44.0f, Colors::Yellow);
@@ -886,16 +886,17 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
     const sevenWD::GameController* gc = ui ? ui->gameController : nullptr;
 
     // detect controller states that change token interaction mode
-    bool isPickState = gc && gc->m_state == sevenWD::GameController::State::PickScienceToken;
-    bool isGreatLibraryState = gc && (gc->m_state == sevenWD::GameController::State::GreatLibraryToken ||
-                                      gc->m_state == sevenWD::GameController::State::GreatLibraryTokenThenReplay);
+    bool isPickState = gc && gc->m_gameState.m_state == sevenWD::GameState::State::PickScienceToken;
+    bool isGreatLibraryState = gc && (gc->m_gameState.m_state == sevenWD::GameState::State::GreatLibraryToken ||
+        gc->m_gameState.m_state == sevenWD::GameState::State::GreatLibraryTokenThenReplay);
 
     // Normal board tokens (when controller asks for pick from the board)
     if (isPickState || !isGreatLibraryState)
     {
+        // Pool is always 0-based for getPlayableScienceToken, "normal" mode.
         for (int i = 0; i < m_state.m_numScienceToken; ++i)
         {
-            const sevenWD::Card& card = m_state.getPlayableScienceToken(i);
+            const sevenWD::Card& card = m_state.getPlayableScienceToken(i, /*isGreatLib*/ false);
             sevenWD::ScienceToken type = (sevenWD::ScienceToken)card.getSecondaryType();
 
             float tx = x + i * (m_layout.tokenW + 10.0f);
@@ -925,7 +926,8 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
                     if (isPickState && ui->leftClick)
                     {
                         sevenWD::Move mv;
-                        mv.playableCard = u8(i); // token index on the board
+                        // playableCard is the index in the "normal" pool (0-based)
+                        mv.playableCard = u8(i);
                         mv.action = sevenWD::Move::Action::ScienceToken;
                         mv.wonderIndex = u8(-1);
                         mv.additionalId = u8(-1);
@@ -941,17 +943,24 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
     // Great Library draft tokens (presented when GreatLibrary wonder grants a choice)
     if (isGreatLibraryState)
     {
-        auto draft = m_state.getGreatLibraryDraft(); // 3 tokens
-        // draw them in a tighter group centered at x
-        const int count = 3;
+        // Great Library pool is also treated as its own 0-based pool.
+        // getPlayableScienceToken(idx, true) will interpret idx as "Great Library" offset.
+        static constexpr int kGreatLibraryCount = 3;
+
         const float spacing = 12.0f;
-        float totalW = count * m_layout.tokenW + (count - 1) * spacing;
+        float totalW = kGreatLibraryCount * m_layout.tokenW + (kGreatLibraryCount - 1) * spacing;
         float startX = x - totalW * 0.5f;
 
-        for (int i = 0; i < count; ++i)
+        for (int localIdx = 0; localIdx < kGreatLibraryCount; ++localIdx)
         {
-            sevenWD::ScienceToken token = draft[i];
-            float tx = startX + i * (m_layout.tokenW + spacing);
+            // Bound check against underlying storage; caller guarantees the pool exists.
+            if (localIdx < 0 || localIdx >= m_state.m_numScienceToken)
+                continue;
+
+            const sevenWD::Card& tokenCard = m_state.getPlayableScienceToken(localIdx, /*isGreatLib*/ true);
+            sevenWD::ScienceToken token = (sevenWD::ScienceToken)tokenCard.getSecondaryType();
+
+            float tx = startX + localIdx * (m_layout.tokenW + spacing);
             float tw = m_layout.tokenW;
             float th = m_layout.tokenH;
 
@@ -962,21 +971,18 @@ void SevenWDuelRenderer::drawScienceTokens(UIState* ui)
                 if (ui->mouseX >= int(tx) && ui->mouseX < int(tx + tw) &&
                     ui->mouseY >= int(y) && ui->mouseY < int(y + th))
                 {
-                    ui->hoveredScienceToken = i;
+                    // hover index is also in the local Great Library pool coordinates (0..2)
+                    ui->hoveredScienceToken = localIdx;
                     m_renderer->DrawRect(tx - 4.0f, y - 4.0f, tw + 8.0f, th + 8.0f, Colors::Yellow);
 
-                    // clicking selects the drafted token. GameController expects Move::ScienceToken
-                    // with additionalId == cardId of the chosen science token.
                     if (ui->leftClick)
                     {
                         sevenWD::Move mv{};
                         mv.action = sevenWD::Move::Action::ScienceToken;
-                        mv.playableCard = u8(-1);
-                        // map token enum -> card id in GameContext
-                        if (m_state.m_context)
-                            mv.additionalId = m_state.m_context->getScienceToken(token).getId();
-                        else
-                            mv.additionalId = u8(-1);
+                        // For GreatLibrary* states, playableCard is the index in the Great Library pool (0-based).
+                        mv.playableCard = u8(localIdx);
+                        mv.wonderIndex = u8(-1);
+                        mv.additionalId = u8(-1);
 
                         ui->requestedMove = mv;
                         ui->moveRequested = true;
@@ -1245,7 +1251,7 @@ void SevenWDuelRenderer::drawWonderDraft(UIState* ui)
     std::string round = "Round " + std::to_string(m_state.getCurrentWonderDraftRound() + 1) + "/2";
     m_renderer->DrawText(round, startX, startY - m_uiPos.wonderDraftRoundOffset, Colors::White);
 
-    const bool canRequestMove = ui && ui->gameController && ui->gameController->m_state == sevenWD::GameController::State::DraftWonder;
+    const bool canRequestMove = ui && ui->gameController && ui->gameController->m_gameState.m_state == sevenWD::GameState::State::DraftWonder;
 
     for (u8 i = 0; i < count; ++i)
     {

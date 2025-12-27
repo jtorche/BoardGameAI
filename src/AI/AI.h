@@ -15,6 +15,7 @@ namespace sevenWD
 
 		virtual void* createPerThreadContext() const { return nullptr; }
 		virtual void destroyPerThreadContext(void*) const { }
+		virtual void fillPUCTPriors(void* pThreadContext, float(&puctPriors)[GameController::cMaxNumMoves]) { memset(puctPriors, 0, sizeof(puctPriors)); }
 	};
 
 	struct RandAI : AIInterface
