@@ -37,9 +37,10 @@ namespace sevenWD::Helper
 		out.push_back('W');
 		out.push_back('G');
 		out.push_back('S');
-		out.push_back(1); // version
+		out.push_back(2); // version
 
 		// basic game state scalars
+		writeLE(_state.m_state);
 		writeLE(_state.m_numTurnPlayed);
 		writeLE(_state.m_playerTurn);
 		writeLE(_state.m_currentAge);
@@ -193,13 +194,16 @@ namespace sevenWD::Helper
 		if (!ensure(5)) return false;
 		if (_blob[0] != '7' || _blob[1] != 'W' || _blob[2] != 'G' || _blob[3] != 'S') return false;
 		u8 version = _blob[4];
-		if (version != 1) return false;
+		if (version != 2) return false;
 		idx = 5;
 
 		// Create a fresh GameState with context so internal PlayerCity::m_context are initialized
 		_outState = GameState(_context);
 
 		// Basic scalars
+		u8 tmp;
+		if (!readLE_u8(tmp)) return false;
+		_outState.m_state = (GameState::State)tmp;
 		if (!readLE_u8(_outState.m_numTurnPlayed)) return false;
 		if (!readLE_u8(_outState.m_playerTurn)) return false;
 		if (!readLE_u8(_outState.m_currentAge)) return false;
@@ -212,7 +216,6 @@ namespace sevenWD::Helper
 		}
 
 		// military tokens stored as u8 flags
-		u8 tmp;
 		if (!readLE_u8(tmp)) return false; _outState.militaryToken2[0] = tmp != 0;
 		if (!readLE_u8(tmp)) return false; _outState.militaryToken2[1] = tmp != 0;
 		if (!readLE_u8(tmp)) return false; _outState.militaryToken5[0] = tmp != 0;

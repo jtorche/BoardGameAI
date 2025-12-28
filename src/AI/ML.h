@@ -12,6 +12,7 @@ enum class NetworkType {
 	Net_TwoLayer8,
 	Net_TwoLayer24,
 	Net_TwoLayer64,
+	Net_TwoLayer8_PUCT,
 	Net_TwoLayer16_PUCT,
 	Net_TwoLayer64_PUCT,
 };
@@ -28,6 +29,7 @@ struct BaseNN
 		case NetworkType::Net_TwoLayer8: return "TwoLayers8";
 		case NetworkType::Net_TwoLayer24: return "TwoLayers24";
 		case NetworkType::Net_TwoLayer64: return "TwoLayers64";
+		case NetworkType::Net_TwoLayer8_PUCT: return "TwoLayers8_PUCT";
 		case NetworkType::Net_TwoLayer16_PUCT: return "TwoLayers16_PUCT";
 		case NetworkType::Net_TwoLayer64_PUCT: return "TwoLayers64_PUCT";
 		default: return "UnknownNet";
@@ -43,7 +45,8 @@ struct BaseNN
 	using TinyDNN_Net = tiny_dnn::network<tiny_dnn::sequential>;
 	tiny_dnn::network<tiny_dnn::sequential> m_net;
 
-    tiny_dnn::vec_t forward(const tiny_dnn::vec_t& x) { return m_net.predict(x); }
+	virtual void prepareAfterLoad() {}
+	virtual tiny_dnn::vec_t forward(const tiny_dnn::vec_t& x, void* pThreadContext, u32 netAge);
 	TinyDNN_Net& getNetwork() { return m_net; }
 #else
 	virtual torch::Tensor forward(torch::Tensor) { DEBUG_ASSERT(0); }
@@ -82,7 +85,7 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 #if defined(USE_TINY_DNN)
 		ThreadContext* pThreadContext  = (ThreadContext*)pContext;
 		DEBUG_ASSERT(pThreadContext == nullptr || pThreadContext->m_pThis == this);
-		tiny_dnn::vec_t output = pThreadContext ? pThreadContext->m_net[age].predict(buffer) : network->forward(buffer);
+		tiny_dnn::vec_t output = network->forward(buffer, pThreadContext, age);
 		float player0WinProbability = output[0];
 #else
 		torch::Tensor result = network->forward(torch::from_blob(buffer.data(), { 1, tensorSize }, torch::kFloat));
@@ -253,112 +256,3 @@ struct ML_Toolbox
 		return {};
 	}
 };
-
-#ifdef USE_TINY_DNN
-
-template<u32 SecondLayerSize>
-struct TwoLayers : BaseNN
-{
-	TwoLayers(NetworkType netType, bool useExtraTensorData)
-		: BaseNN(netType, useExtraTensorData)
-	{
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
-
-		m_net << tiny_dnn::fully_connected_layer(tensorSize, SecondLayerSize)
-			  << tiny_dnn::relu_layer()
-			  << tiny_dnn::fully_connected_layer(SecondLayerSize, 1)
-			  << tiny_dnn::sigmoid_layer();
-	}
-};
-
-#else
-
-template<u32 SecondLayerSize>
-struct TwoLayers : BaseNN
-{
-	torch::nn::Linear fully1 = nullptr;
-	torch::nn::Linear fully2 = nullptr;
-
-	TwoLayers(NetworkType netType, bool useExtraTensorData)
-		: BaseNN(netType, useExtraTensorData)
-	{
-		using namespace torch;
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
-
-		fully1 = register_module("fully1", nn::Linear(tensorSize, SecondLayerSize));
-		fully2 = register_module("fully2", nn::Linear(SecondLayerSize, 1));
-}
-
-	torch::Tensor forward(torch::Tensor x) override {
-		x = torch::relu(fully1->forward(x));
-		return torch::sigmoid(fully2->forward(x));
-	}
-};
-
-#endif
-
-using TwoLayers64 = TwoLayers<64>;
-using TwoLayers24 = TwoLayers<24>;
-using TwoLayers8 = TwoLayers<8>;
-
-#ifdef USE_TINY_DNN
-
-template<u32 SecondLayerSize>
-struct TwoLayersPUCT : BaseNN
-{
-	TwoLayersPUCT(NetworkType netType)
-		: BaseNN(netType, true)
-	{
-		u32 tensorSize = sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize;
-
-		m_net << tiny_dnn::fully_connected_layer(tensorSize, SecondLayerSize)
-			<< tiny_dnn::relu_layer()
-			<< tiny_dnn::fully_connected_layer(SecondLayerSize, 1 + sevenWD::GameController::cMaxNumMoves)
-			<< tiny_dnn::sigmoid_layer();
-	}
-};
-
-#else
-
-TODO
-
-#endif
-
-#ifdef USE_TINY_DNN
-
-struct BaseLine : BaseNN
-{
-	BaseLine(NetworkType netType, bool useExtraTensorData)
-		: BaseNN(netType, useExtraTensorData)
-	{
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
-
-		m_net << tiny_dnn::fully_connected_layer(tensorSize, 1) << tiny_dnn::sigmoid_layer();
-	}
-};
-
-#else
-
-struct BaseLine : BaseNN
-{
-	torch::nn::Linear fully1 = nullptr;
-
-	BaseLine(NetworkType netType, bool useExtraTensorData)
-		: BaseNN(netType, useExtraTensorData)
-	{
-		using namespace torch;
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
-
-		fully1 = register_module("fully1", nn::Linear(tensorSize, 1));
-	}
-
-	torch::Tensor forward(torch::Tensor x) override {
-		return torch::sigmoid(fully1->forward(x));
-	}
-};
-
-#endif

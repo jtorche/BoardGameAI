@@ -21,6 +21,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     else if (netTypeStr == "TwoLayers8") return NetworkType::Net_TwoLayer8;
     else if (netTypeStr == "TwoLayers24") return NetworkType::Net_TwoLayer24;
     else if (netTypeStr == "TwoLayers64") return NetworkType::Net_TwoLayer64;
+    else if (netTypeStr == "TwoLayers8_PUCT") return NetworkType::Net_TwoLayer8_PUCT;
     else if (netTypeStr == "TwoLayers16_PUCT") return NetworkType::Net_TwoLayer16_PUCT;
     else if (netTypeStr == "TwoLayers64_PUCT") return NetworkType::Net_TwoLayer64_PUCT;
     return NetworkType::Net_BaseLine;
@@ -140,8 +141,8 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 return pAI;
             }
         }
-        else if (parts.size() == 5) {
-            // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName,pureMCAfterNMoves)
+        else if (parts.size() == 4) {
+            // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
                 std::cout << prefix << ": invalid numMoves '" << parts[0] << "'" << std::endl;
                 return nullptr;
@@ -316,7 +317,7 @@ int main(int argc, char** argv)
             };
 
 			NetworkType netType = parseNetType(netTypeStr);
-			bool isPUCT = netType == NetworkType::Net_TwoLayer16_PUCT || netType == NetworkType::Net_TwoLayer64_PUCT;
+			bool isPUCT = netType == NetworkType::Net_TwoLayer8_PUCT || netType == NetworkType::Net_TwoLayer16_PUCT || netType == NetworkType::Net_TwoLayer64_PUCT;
             // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;

@@ -1,4 +1,5 @@
 #include "ML.h"
+#include "NetworkDef.h"
 
 u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext, 
 	sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2])
@@ -264,6 +265,34 @@ float ML_Toolbox::evalPrecision(
 
 #ifdef USE_TINY_DNN
 
+// cross-entropy loss function for tiny_dnn. But with safe clamping to prevent log(0).
+class crossEntropy {
+public:
+	static float_t f(const tiny_dnn::vec_t& y, const tiny_dnn::vec_t& t) {
+		assert(y.size() == t.size());
+		float_t d{ 0 };
+
+		for (size_t i = 0; i < y.size(); ++i) {
+			float_t yi = std::clamp(y[i], float_t(1e-7), float_t(1) - float_t(1e-7));
+			d += -t[i] * std::log(yi) - (float_t(1) - t[i]) * std::log(float_t(1) - yi);
+		}
+
+		return d;
+	}
+
+	static tiny_dnn::vec_t df(const tiny_dnn::vec_t& y, const tiny_dnn::vec_t& t) {
+		assert(y.size() == t.size());
+		tiny_dnn::vec_t d(t.size());
+
+		for (size_t i = 0; i < y.size(); ++i) {
+			float_t yi = std::clamp(y[i], float_t(1e-7), float_t(1) - float_t(1e-7));
+			d[i] = (yi - t[i]) / (yi * (float_t(1) - yi));
+		}
+
+		return d;
+	}
+};
+
 std::pair<float, float> ML_Toolbox::evalMeanLoss(
 	const std::vector<tiny_dnn::vec_t>& predictions,
 	const std::vector<tiny_dnn::vec_t>& labels,
@@ -298,17 +327,30 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 	for (u32 i = 0; i < epoch; ++i) {
 		float avgLoss = 0.0f;
 		float avgAcc = 0.0f;
+		float avgAbsErr = 0.0f;
 
 		int batchId = 0;
 		int counter = 0;
 		for (const auto& batch : batches) {
-			net.fit<tiny_dnn::mse, tiny_dnn::adam>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
+			net.fit<crossEntropy, tiny_dnn::adam>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
 
 			if (batchId % 8 == 7) {
-				std::vector<tiny_dnn::vec_t> prediction = net.predict(batch.data);
-				auto [loss, acc] = evalMeanLoss(prediction, batch.labels, {});
+				float loss = 0;
+				float acc = 0;
+				float absError = 0;
+				for (size_t b = 0; b < batch.data.size(); ++b) {
+					tiny_dnn::vec_t y = net.predict(batch.data[b]);
+					loss += crossEntropy::f(y, batch.labels[b]);
+					acc += (std::round(y[0]) == std::round(batch.labels[b][0])) ? 1.0f : 0.0f;
+					absError += tiny_dnn::absolute::f(y, batch.labels[b]);
+				}
+				loss /= float(batch.data.size());
+				acc /= float(batch.data.size());
+				absError /= float(batch.data.size());
+				
 				avgAcc += acc;
 				avgLoss += loss;
+				avgAbsErr += absError;
 				counter++;
 			}
 			batchId++;
@@ -316,6 +358,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 
 		avgLoss /= std::max(1, counter);
 		avgAcc /= std::max(1, counter);
+		avgAbsErr /= std::max(1, counter);
 
 		std::cout << std::setprecision(4)
 			<< "Epoch:" << i << "/" << epoch << " | ";
@@ -323,7 +366,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 		for (u32 j = 0; j < age; ++j)
 			std::cout << "                                ";
 
-		std::cout << "Loss:" << avgLoss << " | Acc: " << avgAcc << std::endl;
+		std::cout << "Loss:" << avgLoss << " | Acc: " << avgAcc<< " : " << avgAbsErr << std::endl;
 	}
 }
 
@@ -455,6 +498,8 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 		return std::make_shared<TwoLayers24>(type, hasExtraData);
 	case NetworkType::Net_TwoLayer64:
 		return std::make_shared<TwoLayers64>(type, hasExtraData);
+	case NetworkType::Net_TwoLayer8_PUCT:
+		return std::make_shared<TwoLayersPUCT<8>>(type);
 	case NetworkType::Net_TwoLayer16_PUCT:
 		return std::make_shared<TwoLayersPUCT<16>>(type);
 	case NetworkType::Net_TwoLayer64_PUCT:
@@ -475,6 +520,7 @@ bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 genera
 #else
 			torch::load(net[i], filename);
 #endif
+			net[i]->prepareAfterLoad();
 		}
 		else return false;
 	}
@@ -523,6 +569,7 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 #else
 		torch::load(net[age], netFilePath);
 #endif
+		net[age]->prepareAfterLoad();
 	}
 
 	std::stringstream networkName;
@@ -530,4 +577,15 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 	outFullName = networkName.str();
 	outGeneration = mostRecentGen;
 	return true;
+}
+
+tiny_dnn::vec_t BaseNN::forward(const tiny_dnn::vec_t& x, void* pThreadContext, u32 netAge)
+{
+	BaseNetworkAI::ThreadContext* pCtx = reinterpret_cast<BaseNetworkAI::ThreadContext*>(pThreadContext);
+	if (pCtx) {
+		return pCtx->m_net[netAge].predict(x);
+	}
+	else {
+		return m_net.predict(x);
+	}
 }

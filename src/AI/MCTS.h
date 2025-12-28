@@ -39,6 +39,7 @@ struct MTCS_Node {
 	u8 m_numChildren = 0;
 	u8 m_playerTurn = 0;
 
+	float m_nnHeuristic = 0.0f;
 	u32 m_visits = 0;
 	float m_totalRewards = 0;
 	float m_puctPriors[sevenWD::GameController::cMaxNumMoves] = { 0.0f };
@@ -103,6 +104,7 @@ struct MCTS_Zero : BaseNetworkAI
 	thread_pool* m_threadPool = nullptr;
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
+	bool m_useNNHeuristic = true;
 
 	float C = 1.0;
 	static constexpr float cEpsilon = 1e-5f;

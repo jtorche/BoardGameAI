@@ -317,7 +317,7 @@ void MCTS_Deterministic::backPropagate(MTCS_Node* pNode, float reward)
 // --------------------------------------------------- //
 // --------------------- MCTS_Zero ------------------- //
 // --------------------------------------------------- //
-MCTS_Zero::MCTS_Zero(u32 numMoves, u32 numGameState, bool mt) : BaseNetworkAI("MCTS_Zero", {}), m_numMoves(numMoves), m_numSampling(numGameState)
+MCTS_Zero::MCTS_Zero(u32 numMoves, u32 numGameState, bool mt) : BaseNetworkAI("MCTS_Zero", {}), m_numMoves(numMoves), m_numSampling(numGameState), m_useNNHeuristic(false)
 {
 	if (mt) {
 		m_threadPool = new thread_pool(std::thread::hardware_concurrency());
@@ -532,10 +532,10 @@ std::pair<float, u32> MCTS_Zero::playout(MTCS_Node* pNode, std::vector<sevenWD::
 		return { reward, rootPlayer };
 	}
 
-	// if (m_heuristic == Heuristic_UseDNN) {
-	//     float score = computeScore(pNode->m_gameState.m_gameState, rootPlayer, pThreadContext);
-	//     return { score, rootPlayer };
-	// }
+	if (m_useNNHeuristic) {
+	    float score = computeScore(pNode->m_gameState.m_gameState, rootPlayer, pThreadContext);
+	    return { score, rootPlayer };
+	}
 
 	GameController controller = pNode->m_gameState;
 	bool end = false;
