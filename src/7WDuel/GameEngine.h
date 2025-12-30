@@ -23,7 +23,7 @@ namespace sevenWD
 		std::array<u8, u32(CardType::Count)> m_numCardPerType = {};
 		std::array<u8, u32(ResourceType::Count)> m_production = {};
 		std::pair<u8, u8> m_weakProduction = {};
-		std::array<bool, u32(CardType::Count)> m_resourceDiscount = {};
+		std::array<bool, u32(CardType::Count)> m_resourceDiscount = {}; // Bug but need to update serialization as well if changing to ResourceType::Count
 		std::array<u8, u32(ResourceType::Count)> m_bestProductionCardId;
 		std::array<Wonders, 4> m_unbuildWonders = {};
 		u8 m_unbuildWonderCount = 0;
@@ -39,7 +39,7 @@ namespace sevenWD
 		void removeCard(const Card& _card);
 
 		bool ownScienceToken(ScienceToken _token) const { return ((1u << u32(_token)) & m_ownedScienceTokens) > 0; }
-		u32 computeVictoryPoint(const PlayerCity& _otherCity) const;
+		u32 computeVictoryPoint(const PlayerCity& _otherCity, bool includeGoldVP) const;
 
 		void print();
 	};
@@ -121,15 +121,16 @@ namespace sevenWD
 		std::ostream& printPlayablCards(std::ostream& out) const;
 		std::ostream& printAvailableTokens(std::ostream& out) const;
 
-		static const u32 TensorSize = 157;
+		static const u32 TensorSize = 76;
 		template<typename T>
 		u32 fillTensorData(T* _data, u32 _mainPlayer) const;
 
-		static const u32 TensorSizePerPlayableCard = 25;
+		static const u32 TensorSizePerPlayableCard = 18;
+		static const u32 TensorSizePerWonder = 9;
 		template<typename T>
 		void fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const;
 
-		static const u32 ExtraTensorSize = 1 + TensorSizePerPlayableCard * 6;
+		static const u32 ExtraTensorSize = 1 + TensorSizePerPlayableCard * 6 + TensorSizePerWonder * 4;
 		template<typename T>
 		void fillExtraTensorData(T* _data) const;
 
@@ -177,6 +178,11 @@ namespace sevenWD
 		};
 		GraphSetup m_graphsPerAge[3]; // one per age
 		GraphSetup m_graph; // active graph
+
+#ifdef _DEBUG
+		const Card* m_playableCardsPtr[6];
+#endif
+		void updatePlaybleCardPtrDebug();
 
 		std::array<u8, GameContext::MaxCardsPerAge> m_playedAgeCards;
 		u8 m_numPlayedAgeCards = 0;

@@ -112,6 +112,22 @@ namespace sevenWD
 		m_isDeterministic = true;
 	}
 
+#ifdef _DEBUG
+	void GameState::updatePlaybleCardPtrDebug()
+	{
+		for (u32 i = 0; i < 6; ++i) {
+			if (i < m_graph.m_numPlayableCards) {
+				m_playableCardsPtr[i] = &getPlayableCard(i);
+			}
+			else {
+				m_playableCardsPtr[i] = nullptr;
+			}
+		}
+	}
+#else
+	void GameState::updatePlaybleCardPtrDebug() {}
+#endif
+
 	//----------------------------------------------------------------------------
 	void GameState::initWonderDraft()
 	{
@@ -395,6 +411,8 @@ namespace sevenWD
 			};
 		removeFromParent(m_graph.m_graph[_nodeIndex].m_parent0);
 		removeFromParent(m_graph.m_graph[_nodeIndex].m_parent1);
+
+		updatePlaybleCardPtrDebug();
 	}
 
 	u32 GameState::computeNumDicoveriesIfPicked(u32 _playableCardId) const
@@ -455,8 +473,8 @@ namespace sevenWD
 
 	u32 GameState::findWinner()
 	{
-		u32 vp0 = m_playerCity[0].computeVictoryPoint(m_playerCity[1]);
-		u32 vp1 = m_playerCity[1].computeVictoryPoint(m_playerCity[0]);
+		u32 vp0 = m_playerCity[0].computeVictoryPoint(m_playerCity[1], true);
+		u32 vp1 = m_playerCity[1].computeVictoryPoint(m_playerCity[0], true);
 		if (m_military >= 6)
 			vp0 += 10;
 		else if (m_military >= 3)
@@ -1003,74 +1021,45 @@ namespace sevenWD
 			m_production[i] -= _card.m_production[i];
 	}
 
-	u32 PlayerCity::computeVictoryPoint(const PlayerCity& _otherCity) const
+	u32 PlayerCity::computeVictoryPoint(const PlayerCity& _otherCity, bool includeGoldVP) const
 	{
-		u32 goldVP = m_gold / 3;
-		if (m_ownedGuildCards & (1 << u32(CardType::Count)))
-			goldVP *= 2;
+		u32 goldVP = 0;
+		if (includeGoldVP) {
+			goldVP = m_gold / 3;
+			if (m_ownedGuildCards & (1 << u32(CardType::Count)))
+				goldVP *= 2;
+		}
 
 		u32 guildVP = 0;
 		for (const Card& card : m_context->getAllGuildCards())
 		{
 			if (card.getSecondaryType() < u32(CardType::Count) && m_ownedGuildCards & (1 << card.getSecondaryType()))
 			{
-				u32 numCards = std::max(m_numCardPerType[card.getSecondaryType()], _otherCity.m_numCardPerType[card.getSecondaryType()]);
-				guildVP += card.m_victoryPoints * numCards;
+				u32 myCityCount = m_numCardPerType[card.getSecondaryType()];
+				u32 oppCityCount = _otherCity.m_numCardPerType[card.getSecondaryType()];
+
+				// A bit hacky but implement the guild card 'GuildeDesArmateurs'
+				if (card.getSecondaryType() == u32(CardType::Brown)) {
+					myCityCount += m_numCardPerType[u32(CardType::Grey)];
+					oppCityCount += _otherCity.m_numCardPerType[u32(CardType::Grey)];
+				}
+
+				guildVP += card.m_victoryPoints * std::max(myCityCount, oppCityCount);
 			}
 		}
 
 		return m_victoryPoints + goldVP + guildVP;
 	}
 
-	DiscardedCards::DiscardedCards()
-	{
-		for (u8& x : scienceCards)
-			x = u8(-1);
-		for (u8& x : guildCards)
-		 x = u8(-1);
-	}
-
-	void DiscardedCards::add(const GameContext& _context, const Card& _card)
-	{
-		if (_card.getMilitary() > 0)
-		{
-			if (militaryCard == u8(-1) || _card.getMilitary() > _context.getCard(militaryCard).getMilitary())
-				militaryCard = _card.getId();
-		}
-
-		if (_card.m_victoryPoints > 0)
-		{
-			if (bestVictoryPoint == u8(-1) || _card.m_victoryPoints > _context.getCard(bestVictoryPoint).m_victoryPoints)
-				bestVictoryPoint = _card.getId();
-		}
-
-		if (_card.getType() == CardType::Science)
-		{
-			u32 scienceIndex = u32(_card.m_science);
-			if (scienceCards[scienceIndex] != u8(-1))
-			{
-				if(_card.m_victoryPoints > _context.getCard(bestVictoryPoint).m_victoryPoints)
-					scienceCards[scienceIndex] = _card.getId();
-			}
-			else
-				scienceCards[scienceIndex] = _card.getId();
-		}
-
-		if (_card.getType() == CardType::Guild)
-			guildCards[numGuildCards++] = _card.getId();
-	}
-
 	template<typename T>
 	u32 GameState::fillTensorData(T* _data, u32 _mainPlayer) const
 	{
+		u32 opponent = (_mainPlayer + 1) % 2;
 		u32 i = 0;
 		_data[i++] = (T)m_numTurnPlayed;
-		_data[i++] = (T)m_currentAge;
 		_data[i++] = (T)(_mainPlayer == 0 ? m_military : -m_military);
-		_data[i++] = (T)militaryToken2[_mainPlayer];
-		_data[i++] = (T)militaryToken5[_mainPlayer];
-		_data[i++] = (T)militaryToken2[(_mainPlayer + 1) % 2];
-		_data[i++] = (T)militaryToken5[(_mainPlayer + 1) % 2];
+		_data[i++] = (T)((militaryToken2[_mainPlayer] ? 1:0) + (militaryToken5[_mainPlayer] ? 1:0));
+		_data[i++] = (T)((militaryToken2[opponent] ? 1:0) + (militaryToken5[opponent] ? 1:0));
 
 		for (u32 j = 0; j < u32(ScienceToken::Count); ++j) {
 			_data[i + j] = 0;
@@ -1082,51 +1071,67 @@ namespace sevenWD
 
 		const PlayerCity& myCity = m_playerCity[_mainPlayer];
 		const PlayerCity& opponentCity = m_playerCity[(_mainPlayer + 1) % 2];
-		for (u8 j = 0; j < u8(Wonders::Count); ++j)
-		{
-			if (std::find(myCity.m_unbuildWonders.begin(), myCity.m_unbuildWonders.end(), (Wonders)j) != myCity.m_unbuildWonders.end())
-				_data[i] = 1;
-			else if (std::find(opponentCity.m_unbuildWonders.begin(), opponentCity.m_unbuildWonders.end(), (Wonders)j) != opponentCity.m_unbuildWonders.end())
-				_data[i] = -1;
-			else
-				_data[i] = 0;
-			
-			i++;
-		}
+
+		// Maybe we can considere adding this
+		// for (u8 j = 0; j < u8(Wonders::Count); ++j)
+		// {
+		//     if (std::find(myCity.m_unbuildWonders.begin(), myCity.m_unbuildWonders.end(), (Wonders)j) != myCity.m_unbuildWonders.end())
+		//         _data[i] = 1;
+		//     else if (std::find(opponentCity.m_unbuildWonders.begin(), opponentCity.m_unbuildWonders.end(), (Wonders)j) != opponentCity.m_unbuildWonders.end())
+		//         _data[i] = -1;
+		//     else
+		//         _data[i] = 0;
+		// 
+		//     i++;
+		// }
+
+		_data[i++] = (T)myCity.computeVictoryPoint(opponentCity, false);
+		_data[i++] = (T)opponentCity.computeVictoryPoint(myCity, false);
 
 		auto fillCity = [&](const PlayerCity& _city)
 		{
-			for(u8 j=0 ; j<u8(ChainingSymbol::Count) ; ++j)
-				_data[i++] = (T)((_city.m_chainingSymbols & (1 << j)) > 0 ? 1 : 0);
+			u32 chainingSymbolCounts[4] = {};
+			for (u8 j = 0; j < u8(ChainingSymbol::Count); ++j) {
+				if ((_city.m_chainingSymbols & (1 << j)) > 0) {
+					if (j >= u32(ChainingSymbol::FirstYellow) && j <= u32(ChainingSymbol::LastYellow))
+						chainingSymbolCounts[0]++;
+					else if (j >= u32(ChainingSymbol::FirstBlue) && j <= u32(ChainingSymbol::LastBlue))
+						chainingSymbolCounts[1]++;
+					else if (j >= u32(ChainingSymbol::FirstRed) && j <= u32(ChainingSymbol::LastRed))
+						chainingSymbolCounts[2]++;
+					else if (j >= u32(ChainingSymbol::FirstGreen) && j <= u32(ChainingSymbol::LastGreen))
+						chainingSymbolCounts[3]++;
+				}
+			}
 
-			for (size_t j=0 ; i<m_context->getAllGuildCards().size() ; ++j)
-				_data[i++] = (T)((_city.m_ownedGuildCards & (1 << j)) > 0 ? 1 : 0);
+			_data[i++] = (T)chainingSymbolCounts[0];
+			_data[i++] = (T)chainingSymbolCounts[1];
+			_data[i++] = (T)chainingSymbolCounts[2];
+			_data[i++] = (T)chainingSymbolCounts[3];
 
-			for (u8 j = 0; j < u8(ScienceToken::Count); ++j)
+			for (u8 j = 0; j < u8(ScienceToken::CountForNN); ++j)
 				_data[i++] = (T)((_city.m_ownedScienceTokens & (1 << j)) > 0 ? 1 : 0);
 
 			_data[i++] = _city.m_numScienceSymbols;
-			for (u8 j = 0; j < u8(ScienceSymbol::Count); ++j)
-				_data[i++] = (T)_city.m_ownedScienceSymbol[j];
-
 			_data[i++] = (T)_city.m_gold;
-			_data[i++] = (T)_city.m_victoryPoints;
-			
-			for (u8 j = 0; j < u8(CardType::Count); ++j)
-			{
-				_data[i++] = (T)_city.m_numCardPerType[j];
+			_data[i++] = (T)_city.m_numCardPerType[u32(CardType::Yellow)];
+
+			for (u8 j = 0; j < u8(ResourceType::Count); ++j) {
+				_data[i++] = (T)_city.m_production[j];
 				_data[i++] = (T)(_city.m_resourceDiscount[j] ? 1 : 0);
 			}
 
-			for (u8 j = 0; j < u8(ResourceType::Count); ++j)
-				_data[i++] = (T)_city.m_production[j];
+			// Overview of number of cards per type already taken (important to predict future plays, odd of military wins...)
+			for (CardType t : { CardType::Yellow, CardType::Blue, CardType::Military, CardType::Science, CardType::Guild }) {
+				_data[i++] = (T)_city.m_numCardPerType[u32(t)];
+			}
 
 			_data[i++] = (T)_city.m_weakProduction.first;
 			_data[i++] = (T)_city.m_weakProduction.second;
 
 			T numPlayAgainWonders = 0;
 			for (u8 j = 0; j < _city.m_unbuildWonderCount; ++j) {
-				if (Helper::isReplayWonder(_city.m_unbuildWonders[j]))
+				if (Helper::isReplayWonder(_city.m_unbuildWonders[j]) || _city.ownScienceToken(ScienceToken::Theology))
 					numPlayAgainWonders += 1;
 			}
 			_data[i++] = numPlayAgainWonders;
@@ -1152,19 +1157,45 @@ namespace sevenWD
 		case State::DraftWonder:
 			break;
 		case State::Play:
-			_data[0] = (T)0;
-			_data++;
-
+			*(_data++) = (T)0;
 			for (u32 i = 0; i < m_graph.m_numPlayableCards; ++i)
 				fillTensorDataForPlayableCard(_data + i * TensorSizePerPlayableCard, i, m_playerTurn);
+			for (u32 i = m_graph.m_numPlayableCards; i < 6; ++i) {
+				for (u32 j = 0; j < TensorSizePerPlayableCard; ++j)
+					_data[i * TensorSizePerPlayableCard + j] = T(-1);
+			}
+				
+
+			_data += 6 * TensorSizePerPlayableCard;
+			{
+				// Also fill unbuilt wonder for the current player to let NN compute move policy for wonder building
+				u32 unbuildWCount = m_playerCity[m_playerTurn].m_unbuildWonderCount;
+				for (u32 i = 0; i < unbuildWCount; ++i) {
+					Wonders wonderType = m_playerCity[m_playerTurn].m_unbuildWonders[i];
+					const Card& wonder = m_context->getWonder(wonderType);
+					_data[i * TensorSizePerWonder + 0] = (T)wonder.m_victoryPoints;
+					_data[i * TensorSizePerWonder + 1] = (T)wonder.m_military;
+					_data[i * TensorSizePerWonder + 2] = (Helper::isReplayWonder(wonderType) || m_playerCity[m_playerTurn].ownScienceToken(ScienceToken::Theology)) ? (T)1 : (T)0;
+					_data[i * TensorSizePerWonder + 3] = (T)(wonder.m_isWeakProduction ? wonder.m_production[u32(RT::Wood)] : 0);
+					_data[i * TensorSizePerWonder + 4] = (T)(wonder.m_isWeakProduction ? wonder.m_production[u32(RT::Glass)] : 0);
+					_data[i * TensorSizePerWonder + 5] = (T)(wonder.m_goldReward);
+					_data[i * TensorSizePerWonder + 6] = (T)((wonderType == Wonders::Zeus || wonderType == Wonders::CircusMaximus) ? 1 : 0);
+					_data[i * TensorSizePerWonder + 7] = (T)(wonderType == Wonders::GreatLibrary ? 1 : 0);
+					_data[i * TensorSizePerWonder + 8] = (T)(m_playerCity[m_playerTurn].computeCost(wonder, m_playerCity[(m_playerTurn + 1) % 2]));
+				}
+				for (u32 i = unbuildWCount; i < 4; ++i) {
+					for (u32 j = 0; j < TensorSizePerWonder; ++j)
+						_data[i * TensorSizePerWonder + j] = T(-1);
+				}
+			}
+			_data += 4 * TensorSizePerWonder;
 
 			break;
 		case State::PickScienceToken:
 		case State::GreatLibraryTokenThenReplay:
 		case State::GreatLibraryToken:
 			static_assert(u32(ScienceToken::Count) * 5 + 1 <= ExtraTensorSize);
-			_data[0] = (T)1; // indicate science token picking
-			_data++;
+			*(_data++) = (T)1; // indicate science token picking
 			{
 				u32 poolBegin = m_state == State::PickScienceToken ? 0 : 5;
 				u32 poolEnd = m_state == State::PickScienceToken ? m_numScienceToken : poolBegin + 3;
@@ -1196,23 +1227,24 @@ namespace sevenWD
 
 		const Card& card = getPlayableCard(playableCard);
 
-		constexpr u32 cNumCardTypes = 5;
-		_data[i++] = (T)((card.getType() == CardType::Blue) ? 1 : 0);
+		// Both guild and yellow card have long term (implicit) impact, so we give them specific inputs
 		_data[i++] = (T)((card.getType() == CardType::Yellow) ? 1 : 0);
-		_data[i++] = (T)((card.getType() == CardType::Military) ? 1 : 0);
-		_data[i++] = (T)((card.getType() == CardType::Brown || card.getType() == CardType::Grey) ? 1 : 0);
 		_data[i++] = (T)((card.getType() == CardType::Guild) ? 1 : 0);
 
 		for (u32 j = 0; j < u32(RT::Count); ++j)
 			_data[i + j] = card.m_production[j];
 		i += u32(RT::Count);
 
-		for (u32 j = 0; j < u32(ScienceSymbol::Count); ++j)
-			_data[i + j] = (T)(((u32)card.m_science == j) ? 1 : 0);
-		i += u32(ScienceSymbol::Count);
+		if (card.m_science < ScienceSymbol::Count) {
+			_data[i++] = (T)(myCity.m_ownedScienceSymbol[u32(card.m_science)] > 0 ? -1:1);
+			_data[i++] = (T)(opponentCity.m_ownedScienceSymbol[u32(card.m_science)] > 0 ? -1:1);
+		} else {
+			_data[i++] = (T)0;
+			_data[i++] = (T)0;
+		}
 
 		u32 goldReward = 0;
-		if (card.m_chainIn != ChainingSymbol::None && myCity.m_chainingSymbols & (1u << u32(card.m_chainIn)) && myCity.ownScienceToken(ScienceToken::TownPlanning))
+		if (myCity.ownScienceToken(ScienceToken::TownPlanning) && card.m_chainIn != ChainingSymbol::None && myCity.m_chainingSymbols & (1u << u32(card.m_chainIn)))
 			goldReward += 4;
 
 		if (card.m_goldPerNumberOfCardColorTypeCard)
@@ -1222,18 +1254,33 @@ namespace sevenWD
 		else
 			goldReward += card.m_goldReward;
 
+		u32 vp = 0;
+		if (card.m_type != CardType::Guild) {
+			vp += card.m_victoryPoints;
+		} else {
+			if (card.getSecondaryType() < u32(CardType::Count)) {
+				for (const Card& guildCard : m_context->getAllGuildCards()) {
+					if (card.getId() == guildCard.getId()) {
+						u32 numCards = std::max(myCity.m_numCardPerType[guildCard.getSecondaryType()], opponentCity.m_numCardPerType[guildCard.getSecondaryType()]);
+						vp += guildCard.m_victoryPoints * numCards;
+						break;
+					}
+				}
+			} else {
+				// Guild card giving VP per 3 gold, its temporary, money may be spent later. But I think its usefull for the NN to have this info.
+				vp += goldReward / 3;
+			}
+		}
+
+		_data[i++] = (T)vp;
 		_data[i++] = (T)goldReward;
-		_data[i++] = (T)card.m_victoryPoints;
 		_data[i++] = (T)card.m_military;
 		_data[i++] = (T)((card.m_chainOut != ChainingSymbol::None) ? 1 : 0);
 		_data[i++] = (T)(card.m_isWeakProduction ? 1 : 0);
 		_data[i++] = (T)(card.m_isResourceDiscount ? 1 : 0);
 		_data[i++] = (T)myCity.computeCost(card, opponentCity);
-		// _data[i++] = (T)opponentCity.computeCost(card, myCity); TODSO when cached cost per opponent
+		_data[i++] = (T)opponentCity.computeCost(card, myCity);
 		_data[i++] = (T)computeNumDicoveriesIfPicked(playableCard);
-
-
-		// TODO encode secondary type if needed
 
 		DEBUG_ASSERT(i == TensorSizePerPlayableCard);
 	}

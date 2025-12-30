@@ -29,10 +29,10 @@ struct MTCS_Node {
 	sevenWD::Move m_move_from_parent{};
 	sevenWD::GameController m_gameState;
 
-	std::array<sevenWD::Move, 16> m_unexploredMoveStorage;
-	sevenWD::Move* m_pUnexploredMoves = m_unexploredMoveStorage.data();
+	std::array<sevenWD::Move, 24> m_moveStorage;
+	sevenWD::Move* m_pMoves = m_moveStorage.data();
 	
-	std::array<MTCS_Node*, 16> m_childrenStorage;
+	std::array<MTCS_Node*, 24> m_childrenStorage;
 	MTCS_Node** m_children = m_childrenStorage.data();
 
 	u16 m_numUnexploredMoves = 0;
@@ -45,17 +45,19 @@ struct MTCS_Node {
 	float m_puctPriors[sevenWD::GameController::cMaxNumMoves] = { 0.0f };
 
 	void cleanup() {
-		if (m_pUnexploredMoves != m_unexploredMoveStorage.data()) {
-			delete[] m_pUnexploredMoves;
+		if (m_pMoves != m_moveStorage.data()) {
+			delete[] m_pMoves;
 		}
 		for (u32 i = 0; i < m_numChildren; ++i) {
-			m_children[i]->cleanup();
+			if (m_children[i]) {
+				m_children[i]->cleanup();
+			}
 		}
 		if (m_children != m_childrenStorage.data()) {
 			delete[] m_children;
 		}
 		m_children = nullptr;
-		m_pUnexploredMoves = nullptr;
+		m_pMoves = nullptr;
 	}
 };
 
@@ -104,9 +106,8 @@ struct MCTS_Zero : BaseNetworkAI
 	thread_pool* m_threadPool = nullptr;
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
+	float C = 2.0f;
 	bool m_useNNHeuristic = true;
-
-	float C = 1.0;
 	static constexpr float cEpsilon = 1e-5f;
 
 	using BaseNetworkAI::BaseNetworkAI;
@@ -132,10 +133,10 @@ struct MCTS_Zero : BaseNetworkAI
 
 	bool needPUCTPriors() const override { return true; }
 
-	void initPUCTPriors(MTCS_Node* pNode, void* pThreadContext) const;
+	void initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const sevenWD::Move moves[], u32 numMoves) const;
+	void computeNNInference(MTCS_Node* pNode, void* pThreadContext) const;
 	void initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext);
-	MTCS_Node* selection(MTCS_Node* pNode, u32& depth);
-	MTCS_Node* expansion(MTCS_Node* pNode, core::LinearAllocator& linAllocator, void* pThreadContext);
+	MTCS_Node* selection(MTCS_Node* pNode, u32& depth, core::LinearAllocator& linAllocator, void* pThreadContext);
 	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext);
 	void backPropagate(MTCS_Node* pNode, float reward);
 };

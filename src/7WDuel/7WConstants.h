@@ -70,21 +70,37 @@ namespace sevenWD
 		None,
 		Jar,
 		Barrel,
+
 		Mask,
 		Bank,
 		Sun,
 		WaterDrop,
 		GreekPillar,
 		Moon,
+
 		Target,
 		Helmet,
 		Horseshoe,
 		Sword,
 		Tower,
+
 		Harp,
 		Gear,
 		Book,
 		Lamp,
+
+		FirstYellow = Jar,
+		LastYellow = Barrel,
+
+		FirstBlue = Mask,
+		LastBlue = Moon,
+
+		FirstRed = Target,
+		LastRed = Tower,
+
+		FirstGreen = Harp,
+		LastGreen = Lamp,
+
 		Count,
 	};
 
@@ -93,17 +109,19 @@ namespace sevenWD
 
 	enum class ScienceToken : u8
 	{
-		Agriculture = 0,
-		TownPlanning,
-		Architecture,
-		Theology,
 		Strategy,
-		Law,
-		Mathematics,
 		Masonry,
-		Philosophy,
 		Economy,
-		Count
+		Mathematics,
+		TownPlanning,
+
+		Theology,
+		Law,
+		Architecture,
+		Philosophy,
+		Agriculture,
+		Count,
+		CountForNN = Theology, // we do not save token's bellow in the NN input (per player city)
 	};
 
 	enum class SpecialAction

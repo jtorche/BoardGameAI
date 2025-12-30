@@ -50,16 +50,20 @@ int main(int argc, char** argv)
     // ---------------
     // Prepare AI 
     // ---------------
-    MCTS_Deterministic* activeAI = nullptr;
-    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Deterministic>(NetworkType::Net_TwoLayer8, "mixed", false);
+    MCTS_Zero* activeAI = nullptr;
+    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer16_PUCT, "zero", true);
 	// if (pLoadedAI) {
 	// 	activeAI = pLoadedAI;
     // }
 
+	activeAI = new MCTS_Zero(10000, 8, true);
+
     if (!activeAI) {
-        activeAI = new MCTS_Deterministic(10000, 50, true);
+        // activeAI = new MCTS_Deterministic(10000, 50, true);
+		std::cerr << "Failed to load AI.\n";
+        return 1;
     }
-    
+
     std::cout << "Loaded AI: " << activeAI->getName() << "\n";
 
     // create per-thread context for the active AI (may be nullptr for simple AIs)
@@ -235,7 +239,7 @@ int main(int argc, char** argv)
 
     // Create two sliders with desired ranges and default values.
     std::vector<Slider*> allSliders;
-    Slider sliderAINumSamples(10, 1000, 50, "AI Samples");
+    Slider sliderAINumSamples(1, 1000, 50, "AI Samples");
     Slider sliderNumSimu(10000, 500000, 50000, "AI Num Simu");
 	allSliders.push_back(&sliderAINumSamples);
 	allSliders.push_back(&sliderNumSimu);
@@ -511,8 +515,8 @@ int main(int argc, char** argv)
         // When game is over draw both player final scores using computeVictoryPoint()
         if (isGameOver()) {
             const auto& gs = gameController.m_gameState;
-            u32 vp0 = gs.m_playerCity[0].computeVictoryPoint(gs.m_playerCity[1]);
-            u32 vp1 = gs.m_playerCity[1].computeVictoryPoint(gs.m_playerCity[0]);
+            u32 vp0 = gs.m_playerCity[0].computeVictoryPoint(gs.m_playerCity[1], true);
+            u32 vp1 = gs.m_playerCity[1].computeVictoryPoint(gs.m_playerCity[0], true);
 
             std::ostringstream oss;
             oss << "Final scores - Player 1: " << vp0 << "   Player 2: " << vp1;

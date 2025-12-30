@@ -62,12 +62,13 @@ void ML_Toolbox::Dataset::fillBatches(
 
 		for (size_t j = i; j < std::min(i + batchSize, m_data.size()); ++j) {
 			tiny_dnn::vec_t input(tensorSize);
-			m_data[j].m_state.fillTensorData(input.data(), 0);
+			u32 curPlayer = m_data[j].m_state.getCurrentPlayerTurn();
+			m_data[j].m_state.fillTensorData(input.data(), curPlayer);
 			if (useExtraTensorData)
 				m_data[j].m_state.fillExtraTensorData(input.data() + GameState::TensorSize);
 
 			tiny_dnn::vec_t label(1 + (usePUCT ? GameController::cMaxNumMoves : 0));
-			label[0] = (m_data[j].m_winner == 0) ? 1.0f : 0.0f;
+			label[0] = (m_data[j].m_winner == curPlayer) ? 1.0f : 0.0f;
 			if (usePUCT) {
 				for (u32 k = 0; k < GameController::cMaxNumMoves; ++k) {
 					label[1 + k] = m_data[j].m_puctPriors[k];
@@ -334,7 +335,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 		for (const auto& batch : batches) {
 			net.fit<crossEntropy, tiny_dnn::adam>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
 
-			if (batchId % 8 == 7) {
+			if ((batchId + i) % 8 == 7) {
 				float loss = 0;
 				float acc = 0;
 				float absError = 0;
@@ -342,7 +343,15 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 					tiny_dnn::vec_t y = net.predict(batch.data[b]);
 					loss += crossEntropy::f(y, batch.labels[b]);
 					acc += (std::round(y[0]) == std::round(batch.labels[b][0])) ? 1.0f : 0.0f;
-					absError += tiny_dnn::absolute::f(y, batch.labels[b]);
+
+					// Normalize PUCT move policy part
+					float sum = 1e-7f;
+					for (u32 l=1 ; l<y.size() ; ++l) 
+						sum += y[l];
+					for (u32 l = 1; l < y.size(); ++l) {
+						y[l] /= sum;
+						absError += fabsf(y[l] - batch.labels[b][l]);
+					}
 				}
 				loss /= float(batch.data.size());
 				acc /= float(batch.data.size());

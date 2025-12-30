@@ -184,10 +184,10 @@ namespace sevenWD
 		else if (_move.action == Move::ScienceToken)
 		{
 			if(m_gameState.m_state == State::PickScienceToken)
-				m_gameState.pickScienceToken(_move.playableCard, false);
+				action = m_gameState.pickScienceToken(_move.playableCard, false);
 			else if (m_gameState.m_state == State::GreatLibraryToken || m_gameState.m_state == State::GreatLibraryTokenThenReplay)
 			{
-				m_gameState.pickScienceToken(_move.playableCard, true);
+				action = m_gameState.pickScienceToken(_move.playableCard, true);
 				if (action == SpecialAction::Nothing && m_gameState.m_state == State::GreatLibraryTokenThenReplay)
 					action = SpecialAction::Replay;
 			}
