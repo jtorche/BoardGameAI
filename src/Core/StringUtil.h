@@ -21,4 +21,8 @@ namespace StringUtil
     // Parse unsigned integer without exceptions using from_chars.
     // Returns true on success and sets 'out'.
     bool parseUint(const std::string& s, u32& out);
+
+    // Parse float without exceptions using from_chars.
+    // Returns true on success and sets 'out'.
+    bool parseFloat(const std::string& s, float& out);
 }

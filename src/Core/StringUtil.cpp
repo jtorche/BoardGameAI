@@ -67,4 +67,18 @@ namespace StringUtil
         auto res = std::from_chars(first, last, out);
         return (res.ec == std::errc() && res.ptr == last);
     }
+
+    // Parse float without exceptions using from_chars.
+    // Returns true on success and sets 'out'.
+    bool parseFloat(const std::string& s, float& out) {
+        out = 0.0f;
+        if (s.empty()) return false;
+
+        auto first = s.data();
+        auto last = s.data() + s.size();
+
+        // Requires C++17 floating-point from_chars support in the toolset.
+        auto res = std::from_chars(first, last, out, std::chars_format::general);
+        return (res.ec == std::errc() && res.ptr == last);
+    }
 }

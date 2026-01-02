@@ -319,9 +319,16 @@ void MCTS_Deterministic::backPropagate(MTCS_Node* pNode, float reward)
 MCTS_Zero::MCTS_Zero(u32 numMoves, u32 numGameState, bool mt) : BaseNetworkAI("MCTS_Zero", {}), m_numMoves(numMoves), m_numSampling(numGameState), m_useNNHeuristic(false)
 {
 	if (mt) {
-		m_threadPool = new thread_pool(std::thread::hardware_concurrency());
+		enableMT();
 	}
 	C = 5.0f; // when no PUCT priors are used, a higher C value is beneficial
+}
+
+void MCTS_Zero::enableMT()
+{
+	if (m_threadPool == nullptr) {
+		m_threadPool = new thread_pool(std::thread::hardware_concurrency());
+	}
 }
 
 std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
@@ -333,6 +340,11 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	std::vector<float> scores(_moves.size(), 0);
 	float puctPriors[GameController::cMaxNumMoves] = { 0 };
 	std::mutex* pMutex = nullptr;
+
+	// In case of many samplings, we can use the best move in avg regarding all sampled states, 
+	// Else we use sum of visits to avoid too much noise in the gameState randomness. This supposely helps in case of low sampling count used during training.
+	// In case of strong play, m_numSampling should be large and the best move is chosen regardless if it is a "very good move" or just a "good move". (especially against humans that will do some mistake anyway).
+	bool useBestAvgSampledScenario = m_numSampling > 16;
 
 	auto processRange = [&](u32 start, u32 end)
 	{
@@ -360,12 +372,36 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 
 				DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
 				maxDepthAvg += (float)maxDepth;
-				for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
-					sampledVisits[j] += pRoot->m_children[j]->m_visits;
-					scores[j] += pRoot->m_children[j]->m_totalRewards;
 
-					u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex();
-					puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
+				if (useBestAvgSampledScenario) {
+					// find best child in this sampled scenario
+					u32 bestIndex = 0;
+					u32 bestVisits = 0;
+					for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
+						const MTCS_Node* pChild = pRoot->m_children[j];
+						u32 moveFixedIndex = pChild->m_move_from_parent.computeMoveFixedIndex();
+						puctPriors[moveFixedIndex] += (float)pChild->m_visits / pRoot->m_visits;
+						if (pRoot->m_children[bestIndex]->m_visits > 0) {
+							scores[j] += pChild->m_totalRewards / pChild->m_visits;
+						}
+
+						if (pChild->m_visits > bestVisits) {
+							bestVisits = pChild->m_visits;
+							bestIndex = j;
+						}
+					}
+
+					sampledVisits[bestIndex] += 1;
+				}
+				else {
+					// accumulate all children stats
+					for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
+						sampledVisits[j] += pRoot->m_children[j]->m_visits;
+						scores[j] += pRoot->m_children[j]->m_totalRewards;
+
+						u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex();
+						puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
+					}
 				}
 
 				if (pMutex) pMutex->unlock();
@@ -390,7 +426,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	u32 bestIndex = 0;
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
-		scores[i] /= sampledVisits[i];
+		scores[i] /= (useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
 		puctPriors[_moves[i].computeMoveFixedIndex()] /= m_numSampling;
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];
@@ -449,7 +485,14 @@ void MCTS_Zero::initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const sev
 	// Mask non valid moves and normalize the output probability
 	float mask[sevenWD::GameController::cMaxNumMoves] = { 0 };
 	for (u32 i = 0; i < numMoves; ++i) {
-		mask[moves[i].computeMoveFixedIndex()] = 1.0;
+		const u32 fixedIndex = moves[i].computeMoveFixedIndex();
+		mask[fixedIndex] = 1.0;
+
+		if (moves[i].action == sevenWD::Move::Action::Pick && m_scienceBoost > 0.f) {
+			if (pNode->m_gameState.m_gameState.getPlayableCard(moves[i].playableCard).getType() == sevenWD::CardType::Science) {
+				pNode->m_puctPriors[fixedIndex] += m_scienceBoost;
+			}
+		}
 	}
 
 	float sum = cEpsilon;
@@ -498,7 +541,7 @@ void MCTS_Zero::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numM
 	initPUCTPriors(pNode, pThreadContext, moves, numMoves);
 
 	// dirichlet noise to improve exploration for NN prior training
-	if (m_useNNHeuristic) {
+	if (m_useNNHeuristic && m_useDirichletNoise) {
 		float epsilon = 0.25f;
 		float alpha = 0.3f;
 		std::vector<float> noise = sample_dirichlet(numMoves, alpha, m_rand);

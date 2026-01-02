@@ -21,9 +21,10 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     else if (netTypeStr == "TwoLayers8") return NetworkType::Net_TwoLayer8;
     else if (netTypeStr == "TwoLayers24") return NetworkType::Net_TwoLayer24;
     else if (netTypeStr == "TwoLayers64") return NetworkType::Net_TwoLayer64;
+    else if (netTypeStr == "TwoLayers4_PUCT") return NetworkType::Net_TwoLayer4_PUCT;
     else if (netTypeStr == "TwoLayers8_PUCT") return NetworkType::Net_TwoLayer8_PUCT;
     else if (netTypeStr == "TwoLayers16_PUCT") return NetworkType::Net_TwoLayer16_PUCT;
-    else if (netTypeStr == "TwoLayers64_PUCT") return NetworkType::Net_TwoLayer64_PUCT;
+    else if (netTypeStr == "TwoLayers32_PUCT") return NetworkType::Net_TwoLayer32_PUCT;
     return NetworkType::Net_BaseLine;
 }
 
@@ -141,7 +142,7 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 return pAI;
             }
         }
-        else if (parts.size() == 4) {
+        else if (parts.size() >= 4) {
             // form: MCTS_Deterministic(numMoves;numSimu;modelName;netName)
             if (!parseUint(trim_copy(parts[0]), numMoves)) {
                 std::cout << prefix << ": invalid numMoves '" << parts[0] << "'" << std::endl;
@@ -168,6 +169,14 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 }
                 pAI->m_numMoves = numMoves;
                 pAI->m_numSampling = numSimu;
+
+                if (parts.size() >= 5) {
+                    parseFloat(trim_copy(parts[4]), pAI->C);
+                }
+                if (parts.size() == 6) {
+                    parseFloat(trim_copy(parts[5]), pAI->m_scienceBoost);
+                }
+
                 return pAI;
             }
             else {
@@ -198,7 +207,7 @@ int main(int argc, char** argv)
     try {
         cxxopts::Options options("Play7WDuel", "Console tool: generate dataset or train network");
         options.add_options()
-            ("mode", "Mode: generate or train", cxxopts::value<std::string>()->default_value("generate"))
+            ("mode", "Mode: generate or train or stats", cxxopts::value<std::string>()->default_value("generate"))
             ("size", "Dataset size (number of games)", cxxopts::value<uint32_t>()->default_value("100"))
             // allow multiple --ai entries, default is two AIs (RandAI and MonteCarloAI)
             ("ai", "AI to include in generation (repeatable).\nList: RandAI MonteCarloAI(numSimu) MCTS_Simple(numSimu;depth;modelName;netName) MCTS_Deterministic(numMove, numSimu)",
@@ -317,7 +326,7 @@ int main(int argc, char** argv)
             };
 
 			NetworkType netType = parseNetType(netTypeStr);
-			bool isPUCT = netType == NetworkType::Net_TwoLayer8_PUCT || netType == NetworkType::Net_TwoLayer16_PUCT || netType == NetworkType::Net_TwoLayer64_PUCT;
+			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_TwoLayer32_PUCT);
             // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
@@ -342,7 +351,7 @@ int main(int argc, char** argv)
                     return 1;
                 }
 
-                dataset[age].shuffle(context); // shuffle before training
+                dataset[age].prepareForTraining(context, 2, 2); // shuffle before training
                 std::cout << "Loaded age " << age << " dataset: " << dataset[age].m_data.size() << " points." << std::endl;
             }
 
@@ -367,6 +376,26 @@ int main(int argc, char** argv)
             u32 generation = result["gen"].as<u32>();
             ML_Toolbox::saveNet(outPrefix, generation, nets);
             std::cout << "Training complete. Networks saved with prefix: " << outPrefix << " gen=" << generation << std::endl;
+            return 0;
+        }
+        else if (mode == "stats") {
+            if (inPrefix.empty()) {
+                std::cout << "For stats you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
+                return 1;
+            }
+
+            Tournament tournament;
+            tournament.deserializeDataset(inPrefix);
+
+            ML_Toolbox::Dataset dataset[3];
+            tournament.fillDataset(dataset);
+
+            for (u32 age = 0; age < 3; ++age) {
+                std::cout << "----------------------------------------" << std::endl;
+                std::cout << "Age " << age+1 << " (" << dataset[age].m_data.size() << " points)" << std::endl;
+                dataset[age].printStats();
+            }
+
             return 0;
         }
         else {

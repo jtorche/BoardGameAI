@@ -12,9 +12,10 @@ enum class NetworkType {
 	Net_TwoLayer8,
 	Net_TwoLayer24,
 	Net_TwoLayer64,
+	Net_TwoLayer4_PUCT,
 	Net_TwoLayer8_PUCT,
 	Net_TwoLayer16_PUCT,
-	Net_TwoLayer64_PUCT,
+	Net_TwoLayer32_PUCT,
 };
 
 struct BaseNN 
@@ -29,9 +30,10 @@ struct BaseNN
 		case NetworkType::Net_TwoLayer8: return "TwoLayers8";
 		case NetworkType::Net_TwoLayer24: return "TwoLayers24";
 		case NetworkType::Net_TwoLayer64: return "TwoLayers64";
+		case NetworkType::Net_TwoLayer4_PUCT: return "TwoLayers4_PUCT";
 		case NetworkType::Net_TwoLayer8_PUCT: return "TwoLayers8_PUCT";
 		case NetworkType::Net_TwoLayer16_PUCT: return "TwoLayers16_PUCT";
-		case NetworkType::Net_TwoLayer64_PUCT: return "TwoLayers64_PUCT";
+		case NetworkType::Net_TwoLayer32_PUCT: return "TwoLayers32_PUCT";
 		default: return "UnknownNet";
 		}
 	}
@@ -201,9 +203,9 @@ struct ML_Toolbox
 
 		void clear() { m_data.clear(); }
 
-		void shuffle(const sevenWD::GameContext& sevenWDContext) {
-			std::shuffle(m_data.begin(), m_data.end(), sevenWDContext.rand());
-		}
+		void printStats();
+
+		void prepareForTraining(const sevenWD::GameContext& sevenWDContext, u32 scienceWeight, u32 militaryWeight);
 
 		void operator+=(const Dataset& dataset) {
 			for (const Point& d : dataset.m_data)

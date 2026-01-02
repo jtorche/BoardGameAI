@@ -51,12 +51,12 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Zero* activeAI = nullptr;
-    // auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer16_PUCT, "zero", true);
-	// if (pLoadedAI) {
-	// 	activeAI = pLoadedAI;
-    // }
-
-	activeAI = new MCTS_Zero(10000, 8, true);
+    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer32_PUCT, "tl32", true);
+	if (pLoadedAI) {
+		activeAI = pLoadedAI;
+        pLoadedAI->enableMT();
+		activeAI->m_useDirichletNoise = false;
+    }
 
     if (!activeAI) {
         // activeAI = new MCTS_Deterministic(10000, 50, true);

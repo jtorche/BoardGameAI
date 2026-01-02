@@ -45,6 +45,91 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 	return game.m_gameState.m_state == GameState::State::WinPlayer0 ? 0 : 1;
 }
 
+void ML_Toolbox::Dataset::printStats()
+{
+	using namespace sevenWD;
+
+	u32 winTypeCounts[4] = { 0, 0, 0, 0 };
+	u32 winnerCounts[2] = { 0, 0 };
+
+	for (const Point& pt : m_data) {
+		const u32 wt = (pt.m_winType == WinType::None) ? 0u : (u32)pt.m_winType;
+		if (wt < 4) {
+			winTypeCounts[wt]++;
+		}
+
+		if (pt.m_winner < 2) {
+			winnerCounts[pt.m_winner]++;
+		}
+	}
+
+	const u32 total = (u32)m_data.size();
+
+	std::cout << "Dataset stats:\n";
+	std::cout << "Total points: " << total << "\n";
+	std::cout << "Winner counts:\n";
+	std::cout << "  Player0: " << winnerCounts[0] << "\n";
+	std::cout << "  Player1: " << winnerCounts[1] << "\n";
+
+	std::cout << "Win type counts:\n";
+	std::cout << "  None:     " << winTypeCounts[(u32)WinType::None] << "\n";
+	std::cout << "  Civil:    " << winTypeCounts[(u32)WinType::Civil] << "\n";
+	std::cout << "  Military: " << winTypeCounts[(u32)WinType::Military] << "\n";
+	std::cout << "  Science:  " << winTypeCounts[(u32)WinType::Science] << "\n";
+
+	if (total > 0) {
+		auto pct = [total](u32 v) -> double { return 100.0 * double(v) / double(total); };
+
+		std::cout << "Win type %:\n";
+		std::cout << "  None:     " << pct(winTypeCounts[(u32)WinType::None]) << "\n";
+		std::cout << "  Civil:    " << pct(winTypeCounts[(u32)WinType::Civil]) << "\n";
+		std::cout << "  Military: " << pct(winTypeCounts[(u32)WinType::Military]) << "\n";
+		std::cout << "  Science:  " << pct(winTypeCounts[(u32)WinType::Science]) << "\n";
+
+		std::cout << "Winner %:\n";
+		std::cout << "  Player0:  " << pct(winnerCounts[0]) << "\n";
+		std::cout << "  Player1:  " << pct(winnerCounts[1]) << "\n";
+	}
+}
+
+void ML_Toolbox::Dataset::prepareForTraining(const sevenWD::GameContext& sevenWDContext, u32 scienceWeight, u32 militaryWeight)
+{
+	using namespace sevenWD;
+
+	u32 winTypeCounts[4] = { 0, 0, 0, 0 };
+	u32 winnerCounts[2] = { 0, 0 };
+
+	for (const Point& pt : m_data) {
+		const u32 wt = (pt.m_winType == WinType::None) ? 0u : (u32)pt.m_winType;
+		if (pt.m_winner < 2) {
+			winnerCounts[pt.m_winner]++;
+		}
+	}
+
+	// Balance win between both player to not bias the dataset
+	u32 minNumWin = std::min(winnerCounts[0], winnerCounts[1]);
+	winnerCounts[0] = 0;
+	winnerCounts[1] = 0;
+
+	auto cpy = std::move(m_data);
+	for (const Point& pt : cpy) {
+		if (pt.m_winner < 2 && ((winnerCounts[pt.m_winner]++) < minNumWin)) {
+			u32 weight = 1;
+			if (pt.m_winType == WinType::Military) {
+				weight = std::max(weight, militaryWeight);
+			}
+			if (pt.m_winType == WinType::Science) {
+				weight = std::max(weight, scienceWeight);
+			}
+			for (u32 i = 0; i < weight; ++i) {
+				m_data.push_back(pt);
+			}
+		}
+	}
+
+	std::shuffle(m_data.begin(), m_data.end(), sevenWDContext.rand());
+}
+
 void ML_Toolbox::Dataset::fillBatches(
 	u32 batchSize,
 	std::vector<Batch>& batches,
@@ -507,12 +592,14 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 		return std::make_shared<TwoLayers24>(type, hasExtraData);
 	case NetworkType::Net_TwoLayer64:
 		return std::make_shared<TwoLayers64>(type, hasExtraData);
+	case NetworkType::Net_TwoLayer4_PUCT:
+		return std::make_shared<TwoLayersPUCT<4>>(type);
 	case NetworkType::Net_TwoLayer8_PUCT:
 		return std::make_shared<TwoLayersPUCT<8>>(type);
 	case NetworkType::Net_TwoLayer16_PUCT:
 		return std::make_shared<TwoLayersPUCT<16>>(type);
-	case NetworkType::Net_TwoLayer64_PUCT:
-		return std::make_shared<TwoLayersPUCT<64>>(type);
+	case NetworkType::Net_TwoLayer32_PUCT:
+		return std::make_shared<TwoLayersPUCT<32>>(type);
 	default:
 		return nullptr;
 	}

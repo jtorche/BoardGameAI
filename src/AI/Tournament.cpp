@@ -65,10 +65,6 @@ void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGam
 		m_dataset[1] += dataset[1];
 		m_dataset[2] += dataset[2];
 	}
-
-	m_dataset[0].shuffle(context);
-	m_dataset[1].shuffle(context);
-	m_dataset[2].shuffle(context);
 }
 
 void Tournament::generateDatasetFromAI(const sevenWD::GameContext& context, sevenWD::AIInterface* pAI, u32 datasetSize)
@@ -119,10 +115,6 @@ void Tournament::generateDatasetFromAI(const sevenWD::GameContext& context, seve
 		m_dataset[1] += dataset[1];
 		m_dataset[2] += dataset[2];
 	}
-
-	m_dataset[0].shuffle(context);
-	m_dataset[1].shuffle(context);
-	m_dataset[2].shuffle(context);
 }
 
 void Tournament::playOneGame(const sevenWD::GameContext& context, u32 i, u32 j)

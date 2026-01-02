@@ -107,14 +107,19 @@ struct MCTS_Zero : BaseNetworkAI
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
 	float C = 2.0f;
+	float m_scienceBoost = 0.0f;
 	bool m_useNNHeuristic = true;
+	bool m_useDirichletNoise = true;
+	bool m_useTemperature = true;
 	static constexpr float cEpsilon = 1e-5f;
 
 	using BaseNetworkAI::BaseNetworkAI;
 	MCTS_Zero(u32 numMoves, u32 numGameState, bool mt = false);
 
+	void enableMT();
+
 	std::string getName() const override {
-		return std::string("MCTS_Zero") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling);
+		return std::string("MCTS_Zero") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling) + ((m_scienceBoost>0) ? "_sc" : "");
 	}
 
 	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;
