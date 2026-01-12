@@ -242,8 +242,8 @@ int main(int argc, char** argv)
 
     // Create two sliders with desired ranges and default values.
     std::vector<Slider*> allSliders;
-    Slider sliderAINumSamples(1, 1000, 50, "AI Samples");
-    Slider sliderNumSimu(10000, 500000, 50000, "AI Num Simu");
+    Slider sliderAINumSamples(1, 300, 50, "AI Samples");
+    Slider sliderNumSimu(10000, 500000, 100000, "AI Num Simu");
 	allSliders.push_back(&sliderAINumSamples);
 	allSliders.push_back(&sliderNumSimu);
 
@@ -534,7 +534,7 @@ int main(int argc, char** argv)
             // --------------------------
             const int bestBtnX = int(sliderBaseX);
             const int bestBtnY = int(sliderBaseY + float(allSliders.size()) * sliderSpacing + 10.0f);
-            const int bestBtnW = int(sliderW);
+            const int bestBtnW = int(sliderW + 10);
             const int bestBtnH = 36;
 
             bool bestBtnHovered = uiState.mouseX >= bestBtnX && uiState.mouseX <= bestBtnX + bestBtnW &&
