@@ -103,6 +103,10 @@ public:
         int hoveredDestroyCardId = -1;      // card ID currently hovered in modal
         int selectedDestroyCardId = -1;     // card ID selected to destroy
 
+        // For Mausoleum revival modal
+        bool showReviveCardModal = false;
+        int hoveredReviveCardId = -1;       // card ID currently hovered in revival modal
+
         // If renderer detected a move selection it sets this and leaves it to
         // caller to execute and reset (moveRequested -> true -> caller executes move).
         bool moveRequested = false;
@@ -186,6 +190,7 @@ private:
     void drawScienceTokens(UIState* ui);
     void drawSelectedCard(UIState* ui);
     void drawDestroyCardModal(UIState* ui);
+    void drawReviveCardModal(UIState* ui);
     void drawPlayerCityButtons(UIState* ui, UIGameState* uiGameState);
     void drawPlayerCityView(UIState* ui, UIGameState* uiGameState);
     float drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth);

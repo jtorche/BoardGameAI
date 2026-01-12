@@ -42,6 +42,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
         ui->hoveredScienceToken = -1;
         ui->hoveredWonder = -1;
         ui->hoveredDestroyCardId = -1;
+        ui->hoveredReviveCardId = -1;
         ui->moveRequested = false;
     }
 
@@ -109,6 +110,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
         drawCardGraph(ui);
         drawSelectedCard(ui);
         drawDestroyCardModal(ui);
+        drawReviveCardModal(ui);
     }
 }
 
@@ -1131,7 +1133,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                     
                     // Check if this node is the "left" or "right" child of the parent
                     // by looking at which children the parent has
-                    // We need to find all children of this parent and see our position
+                    // We need to find all siblings of this node and see our position
                     
                     // Find all nodes that have this parent
                     std::vector<u32> siblings;
@@ -1252,7 +1254,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
             if (ui && playableIdx != -1)
             {
                 // If modal is showing, don't process card clicks
-                if (ui->showDestroyCardModal)
+                if (ui->showDestroyCardModal || ui->showReviveCardModal)
                     continue;
 
                 // right click cancels selection
@@ -1276,6 +1278,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                             
                             bool isZeus = (wonder == sevenWD::Wonders::Zeus);
                             bool isCircusMaximus = (wonder == sevenWD::Wonders::CircusMaximus);
+                            bool isMausoleum = (wonder == sevenWD::Wonders::Mausoleum);
                             
                             if (isZeus || isCircusMaximus)
                             {
@@ -1316,9 +1319,20 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                                 m_lastClickedNode = -1;
                                 m_lastClickTime = std::chrono::steady_clock::time_point::min();
                             }
+                            else if (isMausoleum && m_state.m_discardedCards.hasRevivableCards())
+                            {
+                                // Show modal for revival selection
+                                ui->showReviveCardModal = true;
+                                ui->pendingBuildWonderIndex = ui->selectedWonderIndex;
+                                ui->pendingPlayableCardIndex = playableIdx;
+                                
+                                // Clear double-click state but keep selection for visual feedback
+                                m_lastClickedNode = -1;
+                                m_lastClickTime = std::chrono::steady_clock::time_point::min();
+                            }
                             else
                             {
-                                // Normal wonder build (no destruction)
+                                // Normal wonder build (no destruction/revival)
                                 sevenWD::Move mv;
                                 mv.playableCard = u8(playableIdx);
                                 mv.action = sevenWD::Move::Action::BuildWonder;
@@ -2124,7 +2138,7 @@ void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
             mv.playableCard = u8(ui->pendingPlayableCardIndex);
             mv.action = sevenWD::Move::Action::BuildWonder;
             mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
-            mv.additionalId = cardId;
+            mv.additionalId = u8(cardId);
 
             ui->requestedMove = mv;
             ui->moveRequested = true;
@@ -2158,10 +2172,209 @@ void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
     m_renderer->DrawRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH, cancelHovered ? Colors::Red : Colors::White);
     m_renderer->DrawText("Cancel", cancelBtnX + 22.0f, cancelBtnY + 8.0f, Colors::White);
 
-    if ((ui->leftClick && cancelHovered) || ui->rightClick)
+    if (ui && (ui->leftClick && cancelHovered) || ui->rightClick)
     {
         // Cancel - close modal without building
         ui->showDestroyCardModal = false;
+        ui->pendingBuildWonderIndex = -1;
+        ui->pendingPlayableCardIndex = -1;
+    }
+}
+
+// ---------------------------------------------------------------------
+// Draw modal for selecting which card to revive (Mausoleum)
+void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
+{
+    if (!ui || !ui->showReviveCardModal)
+        return;
+
+    // Validate pending state
+    if (ui->pendingBuildWonderIndex < 0 || ui->pendingPlayableCardIndex < 0)
+    {
+        ui->showReviveCardModal = false;
+        return;
+    }
+
+    const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(m_state.getCurrentPlayerTurn());
+    if (ui->pendingBuildWonderIndex >= myCity.m_unbuildWonderCount)
+    {
+        ui->showReviveCardModal = false;
+        return;
+    }
+
+    sevenWD::Wonders selectedWonder = myCity.m_unbuildWonders[ui->pendingBuildWonderIndex];
+    
+    if (selectedWonder != sevenWD::Wonders::Mausoleum)
+    {
+        ui->showReviveCardModal = false;
+        return;
+    }
+
+    // Get revivable cards
+    std::vector<u8> revivableCardIds;
+    m_state.m_discardedCards.getRevivableCards(revivableCardIds);
+
+    // Modal dimensions - make it larger to accommodate more cards
+    const float modalW = 700.0f;
+    const float modalH = 400.0f;
+    const float modalX = (1920.0f - modalW) / 2.0f;
+    const float modalY = (1080.0f - modalH) / 2.0f;
+
+    // Draw semi-transparent overlay
+    SDL_Color overlayColor{ 0, 0, 0, 180 };
+    for (int yy = 0; yy < 1080; ++yy)
+    {
+        m_renderer->DrawLine(0.0f, float(yy), 1920.0f, float(yy), overlayColor);
+    }
+
+    // Draw modal background
+    SDL_Color modalBg{ 40, 40, 50, 255 };
+    for (int yy = int(modalY); yy < int(modalY + modalH); ++yy)
+    {
+        m_renderer->DrawLine(modalX, float(yy), modalX + modalW, float(yy), modalBg);
+    }
+
+    // Draw modal border
+    m_renderer->DrawRect(modalX, modalY, modalW, modalH, Colors::Cyan);
+
+    // Title
+    m_renderer->DrawText("Mausoleum: Select a card to revive", modalX + 20.0f, modalY + 20.0f, Colors::Cyan);
+
+    if (revivableCardIds.empty())
+    {
+        // No cards to revive - show message and continue button
+        m_renderer->DrawText("No cards have been discarded yet.", modalX + 20.0f, modalY + 80.0f, Colors::White);
+
+        // Draw "Continue" button (build without revival)
+        const float btnW = 120.0f;
+        const float btnH = 40.0f;
+        const float btnX = modalX + (modalW - btnW) / 2.0f;
+        const float btnY = modalY + modalH - 60.0f;
+
+        bool btnHovered = ui->mouseX >= int(btnX) && ui->mouseX <= int(btnX + btnW) &&
+                          ui->mouseY >= int(btnY) && ui->mouseY <= int(btnY + btnH);
+
+        SDL_Color btnBg = btnHovered ? SDL_Color{ 60, 120, 60, 255 } : SDL_Color{ 40, 80, 40, 255 };
+        for (int yy = int(btnY); yy < int(btnY + btnH); ++yy)
+        {
+            m_renderer->DrawLine(btnX, float(yy), btnX + btnW, float(yy), btnBg);
+        }
+        m_renderer->DrawRect(btnX, btnY, btnW, btnH, btnHovered ? Colors::Green : Colors::White);
+        m_renderer->DrawText("Continue", btnX + 20.0f, btnY + 10.0f, Colors::White);
+
+        if (ui->leftClick && btnHovered)
+        {
+            // Build wonder without reviving any card
+            sevenWD::Move mv;
+            mv.playableCard = u8(ui->pendingPlayableCardIndex);
+            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
+            mv.additionalId = u8(-1);
+
+            ui->requestedMove = mv;
+            ui->moveRequested = true;
+
+            // Close modal and clear state
+            ui->showReviveCardModal = false;
+            ui->pendingBuildWonderIndex = -1;
+            ui->pendingPlayableCardIndex = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+            ui->selectedNode = -1;
+        }
+        return;
+    }
+
+    // Draw revivable cards in a grid
+    const float cardW = 72.0f;
+    const float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+    const float spacing = 12.0f;
+    
+    // Calculate grid layout
+    int cardsPerRow = std::min(8, int(revivableCardIds.size()));
+    int numRows = (int(revivableCardIds.size()) + cardsPerRow - 1) / cardsPerRow;
+    
+    float gridW = cardsPerRow * cardW + (cardsPerRow - 1) * spacing;
+    float gridH = numRows * cardH + (numRows - 1) * spacing;
+    
+    float startX = modalX + (modalW - gridW) / 2.0f;
+    float startY = modalY + 70.0f;
+
+    m_renderer->DrawText("Click a card to revive it:", modalX + 20.0f, startY - 25.0f, Colors::White);
+
+    int cardIndex = 0;
+    for (u8 cardId : revivableCardIds)
+    {
+        int row = cardIndex / cardsPerRow;
+        int col = cardIndex % cardsPerRow;
+        
+        float x = startX + col * (cardW + spacing);
+        float y = startY + row * (cardH + spacing);
+
+        const sevenWD::Card& card = m_state.m_context->getCard(cardId);
+        SDL_Texture* tex = GetCardImage(card);
+
+        bool hovered = ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
+                       ui->mouseY >= int(y) && ui->mouseY < int(y + cardH);
+
+        if (hovered)
+        {
+            ui->hoveredReviveCardId = cardId;
+            m_renderer->DrawRect(x - 4.0f, y - 4.0f, cardW + 8.0f, cardH + 8.0f, Colors::Cyan);
+        }
+
+        // Draw the card
+        if (tex)
+            m_renderer->DrawImage(tex, x, y, cardW, cardH);
+        else
+            m_renderer->DrawText(card.getName() ? card.getName() : "?", x, y, Colors::White);
+
+        // Handle click to select and build
+        if (ui->leftClick && hovered)
+        {
+            // Build wonder with this card as revival target
+            sevenWD::Move mv;
+            mv.playableCard = u8(ui->pendingPlayableCardIndex);
+            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
+            mv.additionalId = cardId;
+
+            ui->requestedMove = mv;
+            ui->moveRequested = true;
+
+            // Close modal and clear state
+            ui->showReviveCardModal = false;
+            ui->pendingBuildWonderIndex = -1;
+            ui->pendingPlayableCardIndex = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+            ui->selectedNode = -1;
+        }
+
+        cardIndex++;
+    }
+
+    // Draw Cancel button
+    const float cancelBtnW = 100.0f;
+    const float cancelBtnH = 36.0f;
+    const float cancelBtnX = modalX + (modalW - cancelBtnW) / 2.0f;
+    const float cancelBtnY = modalY + modalH - 50.0f;
+
+    bool cancelHovered = ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
+                         ui->mouseY >= int(cancelBtnY) && ui->mouseY <= int(cancelBtnY + cancelBtnH);
+
+    SDL_Color cancelBg = cancelHovered ? SDL_Color{ 120, 60, 60, 255 } : SDL_Color{ 80, 40, 40, 255 };
+    for (int yy = int(cancelBtnY); yy < int(cancelBtnY + cancelBtnH); ++yy)
+    {
+        m_renderer->DrawLine(cancelBtnX, float(yy), cancelBtnX + cancelBtnW, float(yy), cancelBg);
+    }
+    m_renderer->DrawRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH, cancelHovered ? Colors::Red : Colors::White);
+    m_renderer->DrawText("Cancel", cancelBtnX + 22.0f, cancelBtnY + 8.0f, Colors::White);
+
+    if (ui && (ui->leftClick && cancelHovered) || ui->rightClick)
+    {
+        // Cancel - close modal without building
+        ui->showReviveCardModal = false;
         ui->pendingBuildWonderIndex = -1;
         ui->pendingPlayableCardIndex = -1;
     }

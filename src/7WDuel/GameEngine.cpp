@@ -320,6 +320,9 @@ namespace sevenWD
 		const Card& card = m_context->getCard(m_graph.m_graph[pickedCard].m_cardId);
 		m_playedAgeCards[m_numPlayedAgeCards++] = card.getAgeId();
 
+		// Track the discarded card for potential Mausoleum revival
+		m_discardedCards.add(*m_context, card);
+
 		u8 burnValue = 2 + getCurrentPlayerCity().m_numCardPerType[u32(CardType::Yellow)];
 		getCurrentPlayerCity().m_gold += burnValue;
 	}
@@ -351,7 +354,12 @@ namespace sevenWD
 			otherPlayer.m_gold = Helper::safeSub<u8>(otherPlayer.m_gold, 3);
 
 		else if (_additionalEffect != u8(-1) && (pickedWonder == Wonders::Zeus || pickedWonder == Wonders::CircusMaximus))
-			otherPlayer.removeCard(m_context->getCard(_additionalEffect));
+		{
+			const Card& destroyedCard = m_context->getCard(_additionalEffect);
+			// Track the destroyed card for potential Mausoleum revival
+			m_discardedCards.add(*m_context, destroyedCard);
+			otherPlayer.removeCard(destroyedCard);
+		}
 
 		else if (_additionalEffect != u8(-1) && pickedWonder == Wonders::Mausoleum)
 		{
@@ -1006,6 +1014,7 @@ namespace sevenWD
 			break;
 		}
 		
+		
 		if (m_numScienceSymbols == 6)
 			return SpecialAction::ScienceWin;
 
@@ -1299,4 +1308,191 @@ namespace sevenWD
 
 	template void GameState::fillTensorDataForPlayableCard<float>(float* _data, u32 playableCard, u32 mainPlayer) const;
 	template void GameState::fillTensorDataForPlayableCard<int16_t>(int16_t* _data, u32 playableCard, u32 mainPlayer) const;
+
+	//----------------------------------------------------------------------------
+	// DiscardedCards implementation
+	//----------------------------------------------------------------------------
+	DiscardedCards::DiscardedCards()
+	{
+		for (u8& id : bestProductionCardId)
+			id = u8(-1);
+		for (u8& id : scienceCardIds)
+			id = u8(-1);
+		for (u8& id : guildCardIds)
+			id = u8(-1);
+	}
+
+	void DiscardedCards::add(const GameContext& context, const Card& card)
+	{
+		u8 cardId = card.getId();
+		CardType type = card.getType();
+
+		switch (type)
+		{
+		case CardType::Brown:
+		case CardType::Grey:
+		{
+			// Track best production card per resource type
+			for (u32 r = 0; r < u32(ResourceType::Count); ++r)
+			{
+				if (card.m_production[r] > 0) {
+					u8 existingId = bestProductionCardId[r];
+					if (existingId == u8(-1))
+						bestProductionCardId[r] = cardId;
+					else {
+						const Card& existing = context.getCard(existingId);
+						if (card.m_production[r] > existing.m_production[r])
+							bestProductionCardId[r] = cardId;
+					}
+				}
+			}
+			break;
+		}
+
+		case CardType::Blue:
+		{
+			if (bestBlueCardId == u8(-1))
+				bestBlueCardId = cardId;
+			else {
+				const Card& existing = context.getCard(bestBlueCardId);
+				if (card.m_victoryPoints > existing.m_victoryPoints)
+					bestBlueCardId = cardId;
+			}
+			break;
+		}
+
+		case CardType::Military:
+		{
+			if (bestMilitaryCardId == u8(-1))
+				bestMilitaryCardId = cardId;
+			else {
+				const Card& existing = context.getCard(bestMilitaryCardId);
+				if (card.m_military > existing.m_military)
+					bestMilitaryCardId = cardId;
+			}
+			break;
+		}
+
+		case CardType::Science:
+		{
+			// Track one card per science symbol
+			u32 symbolIndex = u32(card.m_science);
+			if (symbolIndex < scienceCardIds.size())
+				scienceCardIds[symbolIndex] = cardId;
+			break;
+		}
+
+		case CardType::Guild:
+		{
+			if (numGuildCards < guildCardIds.size())
+				guildCardIds[numGuildCards++] = cardId;
+			break;
+		}
+
+		case CardType::Yellow:
+		{
+			// Track best gold reward card
+			if (card.m_goldReward > 0 && !card.m_goldPerNumberOfCardColorTypeCard) {
+				if (bestYellowGoldRewardCardId == u8(-1))
+					bestYellowGoldRewardCardId = cardId;
+				else {
+					const Card& existing = context.getCard(bestYellowGoldRewardCardId);
+					if (card.m_goldReward > existing.m_goldReward)
+						bestYellowGoldRewardCardId = cardId;
+				}
+			}
+
+			// Track best weak production cards
+			if (card.m_isWeakProduction) {
+				bool isRare = (card.m_production[u32(ResourceType::Glass)] > 0 || 
+							  card.m_production[u32(ResourceType::Papyrus)] > 0);
+				
+				u8& target = isRare ? bestYellowWeakRareCardId : bestYellowWeakNormalCardId;
+				if (target == u8(-1))
+					target = cardId;
+			}
+
+			// Track best VP yellow card
+			if (card.m_victoryPoints > 0) {
+				if (bestYellowVPCardId == u8(-1))
+					bestYellowVPCardId = cardId;
+				else {
+					const Card& existing = context.getCard(bestYellowVPCardId);
+					if (card.m_victoryPoints > existing.m_victoryPoints)
+						bestYellowVPCardId = cardId;
+				}
+			}
+			break;
+		}
+
+		default:
+			break;
+		}
+	}
+
+	void DiscardedCards::getRevivableCards(std::vector<u8>& outCardIds) const
+	{
+		outCardIds.clear();
+
+		// Add best production cards
+		for (u8 id : bestProductionCardId)
+		{
+			if (id != u8(-1))
+				outCardIds.push_back(id);
+		}
+
+		// Add best blue card
+		if (bestBlueCardId != u8(-1))
+			outCardIds.push_back(bestBlueCardId);
+
+		// Add best military card
+		if (bestMilitaryCardId != u8(-1))
+			outCardIds.push_back(bestMilitaryCardId);
+
+		// Add science cards
+		for (u8 id : scienceCardIds)
+		{
+			if (id != u8(-1))
+				outCardIds.push_back(id);
+		}
+
+		// Add all guild cards
+		for (u32 i = 0; i < numGuildCards; ++i)
+		{
+			if (guildCardIds[i] != u8(-1))
+				outCardIds.push_back(guildCardIds[i]);
+		}
+
+		// Add yellow cards
+		if (bestYellowGoldRewardCardId != u8(-1))
+			outCardIds.push_back(bestYellowGoldRewardCardId);
+		if (bestYellowWeakNormalCardId != u8(-1))
+			outCardIds.push_back(bestYellowWeakNormalCardId);
+		if (bestYellowWeakRareCardId != u8(-1))
+			outCardIds.push_back(bestYellowWeakRareCardId);
+		if (bestYellowVPCardId != u8(-1))
+			outCardIds.push_back(bestYellowVPCardId);
+	}
+
+	bool DiscardedCards::hasRevivableCards() const
+	{
+		// Check if any card has been discarded
+		for (u8 id : bestProductionCardId)
+			if (id != u8(-1)) return true;
+		
+		if (bestBlueCardId != u8(-1)) return true;
+		if (bestMilitaryCardId != u8(-1)) return true;
+		
+		for (u8 id : scienceCardIds)
+			if (id != u8(-1)) return true;
+		
+		if (numGuildCards > 0) return true;
+		
+		if (bestYellowGoldRewardCardId != u8(-1)) return true;
+		if (bestYellowWeakNormalCardId != u8(-1)) return true;
+		if (bestYellowWeakRareCardId != u8(-1)) return true;
+		if (bestYellowVPCardId != u8(-1)) return true;
+		
+		return false;
+	}
 }

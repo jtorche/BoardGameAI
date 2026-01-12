@@ -46,14 +46,31 @@ namespace sevenWD
 
 	struct DiscardedCards
 	{
-		u8 militaryCard = u8(-1);
-		u8 bestVictoryPoint = u8(-1);
-		u8 scienceCards[u32(ScienceSymbol::Count)];
-		u8 guildCards[3];
+		// Track best cards per category for efficient revival enumeration
+		// For Brown/Grey: track best production card per resource type
+		std::array<u8, u32(ResourceType::Count)> bestProductionCardId;
+		// For Blue: track best VP card
+		u8 bestBlueCardId = u8(-1);
+		// For Military: track best military card (most shields)
+		u8 bestMilitaryCardId = u8(-1);
+		// For Science: track one card per symbol (all are potentially valuable)
+		std::array<u8, u32(ScienceSymbol::Count)> scienceCardIds;
+		// For Guild: track all discarded guild cards (max 7 in game, but typically 0-3 discarded)
+		std::array<u8, 7> guildCardIds;
 		u8 numGuildCards = 0;
+		// For Yellow: track cards that give unique benefits
+		// We'll track: best gold reward, best weak production (normal), best weak production (rare)
+		u8 bestYellowGoldRewardCardId = u8(-1);
+		u8 bestYellowWeakNormalCardId = u8(-1);
+		u8 bestYellowWeakRareCardId = u8(-1);
+		u8 bestYellowVPCardId = u8(-1);
 	
 		DiscardedCards();
-		void add(const GameContext&, const Card&);
+		void add(const GameContext& context, const Card& card);
+		
+		// Get list of all revivable card IDs (no duplicates, only best choices)
+		void getRevivableCards(std::vector<u8>& outCardIds) const;
+		bool hasRevivableCards() const;
 	};
 
 	//----------------------------------------------------------------------------
@@ -187,6 +204,9 @@ namespace sevenWD
 		std::array<u8, GameContext::MaxCardsPerAge> m_playedAgeCards;
 		u8 m_numPlayedAgeCards = 0;
 
+		// Track discarded cards for Mausoleum revival
+		DiscardedCards m_discardedCards;
+
 		u8 m_numTurnPlayed = 0;
 		u8 m_playerTurn = 0;
 		u8 m_currentAge = u8(-1);
@@ -194,9 +214,12 @@ namespace sevenWD
 		bool militaryToken2[2] = { false,false };
 		bool militaryToken5[2] = { false,false };
 
-		std::array<Wonders, u32(Wonders::Count) - 1> m_wonderDraftPool; // skip Mauselum for now
+		std::array<Wonders, u32(Wonders::Count)> m_wonderDraftPool; // all wonders including Mausoleum
 		u8 m_currentDraftRound = 0; // 0 = first round, 1 = second round, 2 = finished
 		u8 m_picksInCurrentRound = 0;
+
+		// Helper to get revivable cards for Mausoleum
+		const DiscardedCards& getDiscardedCards() const { return m_discardedCards; }
 
 	private:
 		u32 genPyramidGraph(u32 _numRow, u32 _startNodeIndex, GraphArray& graph);

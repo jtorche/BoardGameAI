@@ -88,6 +88,25 @@ namespace sevenWD
 							break;
 
 							case Wonders::Mausoleum:
+							{
+								std::vector<u8> revivableCards;
+								m_gameState.m_discardedCards.getRevivableCards(revivableCards);
+								
+								if (revivableCards.empty())
+								{
+									// No cards to revive, still can build the wonder
+									_fun(move);
+								}
+								else
+								{
+									for (u8 cardId : revivableCards)
+									{
+										move.additionalId = cardId;
+										_fun(move);
+									}
+								}
+							}
+							break;
 
 							default:
 								_fun(move);
@@ -242,10 +261,28 @@ namespace sevenWD
 			return m_gameState.getPlayableCard(move.playableCard).print(out);
 
 		case Move::BuildWonder:
-			out << "Build wonder "; ;
-			m_gameState.m_context->getWonder(Wonders(m_gameState.getCurrentPlayerWonder(move.wonderIndex).getSecondaryType())).print(out);
+		{
+			out << "Build wonder ";
+			Wonders wonderType = Wonders(m_gameState.getCurrentPlayerWonder(move.wonderIndex).getSecondaryType());
+			m_gameState.m_context->getWonder(wonderType).print(out);
 			out << " with "; 
-			return m_gameState.getPlayableCard(move.playableCard).print(out);
+			m_gameState.getPlayableCard(move.playableCard).print(out);
+			
+			if (move.additionalId != u8(-1))
+			{
+				if (wonderType == Wonders::Zeus || wonderType == Wonders::CircusMaximus)
+				{
+					out << " destroying ";
+					m_gameState.m_context->getCard(move.additionalId).print(out);
+				}
+				else if (wonderType == Wonders::Mausoleum)
+				{
+					out << " reviving ";
+					m_gameState.m_context->getCard(move.additionalId).print(out);
+				}
+			}
+			return out;
+		}
 
 		case Move::ScienceToken:
 			out << "Pick science token " << move.playableCard; 
