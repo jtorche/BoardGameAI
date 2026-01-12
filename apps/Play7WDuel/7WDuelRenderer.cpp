@@ -648,7 +648,7 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
         // compute block heights when rendered in one column of width colWidth
         struct HInfo { int idx; float h; };
         std::vector<HInfo> infos; infos.reserve(blocks.size());
-        for (int i = 0; i < (int)blocks.size(); ++i)
+        for (int i = 0; i < (int)blocks.size(); i++)
         {
             float blockCardW = cardW;
             if (blocks[i].type == sevenWD::CardType::Wonder)
@@ -1058,7 +1058,7 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
         for (u32 i = 0; i < m_state.m_numPlayedAgeCards; ++i)
             if (m_state.m_playedAgeCards[i] == ageId) return true;
         return false;
-        };
+    };
 
     // Build quick lookup: nodeIndex -> playableIndex (index into setup.m_playableCards) or -1
     std::vector<int> playableIndexOfNode(graph.size(), -1);
@@ -1069,20 +1069,122 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
             playableIndexOfNode[nodeIdx] = int(i);
     }
 
-    // Draw nodes in their fixed slots. If a visible card was picked, do NOT draw it.
+    // Compute X positions for all nodes
+    std::vector<float> nodeXPositions(graph.size(), 0.0f);
+    
+    // Find max row
+    int maxRow = 0;
+    for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
+    {
+        maxRow = std::max(maxRow, findGraphRow(nodeIndex));
+    }
+
+    // Process row by row from top to bottom
+    for (int row = 0; row <= maxRow; ++row)
+    {
+        // Collect nodes in this row
+        std::vector<u32> nodesInRow;
+        for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
+        {
+            if (findGraphRow(nodeIndex) == row)
+                nodesInRow.push_back(nodeIndex);
+        }
+
+        if (nodesInRow.empty())
+            continue;
+
+        if (row == 0)
+        {
+            // Top row: center all cards with fixed spacing
+            const float rowWidth = (nodesInRow.size() - 1) * dX;
+            const float rowStartX = baseX - (rowWidth / 2.0f);
+            for (size_t i = 0; i < nodesInRow.size(); ++i)
+            {
+                nodeXPositions[nodesInRow[i]] = rowStartX + i * dX;
+            }
+        }
+        else
+        {
+            // For each node, compute position based on parent(s)
+            for (u32 nodeIndex : nodesInRow)
+            {
+                const auto& node = graph[nodeIndex];
+                
+                bool hasParent0 = node.m_parent0 != sevenWD::GameState::CardNode::InvalidNode;
+                bool hasParent1 = node.m_parent1 != sevenWD::GameState::CardNode::InvalidNode;
+
+                if (hasParent0 && hasParent1)
+                {
+                    // Two parents: position exactly between them
+                    float p0x = nodeXPositions[node.m_parent0];
+                    float p1x = nodeXPositions[node.m_parent1];
+                    nodeXPositions[nodeIndex] = (p0x + p1x) / 2.0f;
+                }
+                else if (hasParent0 || hasParent1)
+                {
+                    // Single parent: need to determine if we're left or right child
+                    u32 parentIdx = hasParent0 ? node.m_parent0 : node.m_parent1;
+                    float parentX = nodeXPositions[parentIdx];
+                    const auto& parentNode = graph[parentIdx];
+                    
+                    // Check if this node is the "left" or "right" child of the parent
+                    // by looking at which children the parent has
+                    // We need to find all children of this parent and see our position
+                    
+                    // Find all nodes that have this parent
+                    std::vector<u32> siblings;
+                    for (u32 otherIdx = 0; otherIdx < graph.size(); ++otherIdx)
+                    {
+                        const auto& otherNode = graph[otherIdx];
+                        if (otherNode.m_parent0 == parentIdx || otherNode.m_parent1 == parentIdx)
+                        {
+                            // This node is a child of our parent
+                            if (findGraphRow(otherIdx) == row)
+                                siblings.push_back(otherIdx);
+                        }
+                    }
+                    
+                    // Sort siblings by their node index to get consistent left/right ordering
+                    std::sort(siblings.begin(), siblings.end());
+                    
+                    if (siblings.size() == 2)
+                    {
+                        // Two children sharing one parent: left child goes left, right child goes right
+                        if (nodeIndex == siblings[0])
+                            nodeXPositions[nodeIndex] = parentX - dX / 2.0f;
+                        else
+                            nodeXPositions[nodeIndex] = parentX + dX / 2.0f;
+                    }
+                    else
+                    {
+                        // Single child with single parent (shouldn't happen in initial setup,
+                        // but can happen after cards are played)
+                        // Default to centering under parent with slight offset based on node index parity
+                        if (nodeIndex < parentIdx)
+                            nodeXPositions[nodeIndex] = parentX - dX / 2.0f;
+                        else
+                            nodeXPositions[nodeIndex] = parentX + dX / 2.0f;
+                    }
+                }
+                else
+                {
+                    // No parents (shouldn't happen), fallback to column-based
+                    int col = findGraphColumn(nodeIndex);
+                    const float rowWidth = (rowCardCounts[row] - 1) * dX;
+                    const float rowStartX = baseX - (rowWidth / 2.0f);
+                    nodeXPositions[nodeIndex] = rowStartX + col * dX;
+                }
+            }
+        }
+    }
+
+    // Draw nodes using the computed positions
     for (u32 nodeIndex = 0; nodeIndex < graph.size(); ++nodeIndex)
     {
         const auto& node = graph[nodeIndex];
 
         const int row = findGraphRow(nodeIndex);
-        const int col = findGraphColumn(nodeIndex);
-
-        if (row >= int(rowCardCounts.size()) || rowCardCounts[row] == 0)
-            continue;
-
-        const float rowWidth = rowCardCounts[row] * dX;
-        const float rowStartX = baseX - (rowWidth / 2.0f);
-        const float x = rowStartX + col * dX;
+        const float x = nodeXPositions[nodeIndex];
         const float y = baseY + row * dY;
 
         // compute rect for hit detection

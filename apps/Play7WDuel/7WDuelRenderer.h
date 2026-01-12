@@ -30,7 +30,7 @@ public:
         float playerPanelX1 = 1270.0f; // Player 2 panel X position
 
         float pyramidBaseX = 900.0f; // Screen center X for pyramid (adjustable)
-        float pyramidBaseY = 260.0f; // Y position of pyramid
+        float pyramidBaseY = 220.0f; // Y position of pyramid
 
         float militaryTrackX0 = 720.0f; // X position of military track start
         float militaryTrackY = 40.0f;  // Y position of military track
