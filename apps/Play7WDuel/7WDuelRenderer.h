@@ -95,6 +95,14 @@ public:
         int selectedWonderIndex = -1;   // index inside that player's m_unbuildWonders, -1 if none
         int selectedWonder = -1;
 
+        // For wonders that destroy opponent cards (Zeus, CircusMaximus):
+        // Modal state for selecting which card to destroy
+        bool showDestroyCardModal = false;
+        int pendingBuildWonderIndex = -1;   // wonder index to build once target is selected
+        int pendingPlayableCardIndex = -1;  // playable card index to sacrifice
+        int hoveredDestroyCardId = -1;      // card ID currently hovered in modal
+        int selectedDestroyCardId = -1;     // card ID selected to destroy
+
         // If renderer detected a move selection it sets this and leaves it to
         // caller to execute and reset (moveRequested -> true -> caller executes move).
         bool moveRequested = false;
@@ -177,6 +185,7 @@ private:
     void drawMilitaryTrack();
     void drawScienceTokens(UIState* ui);
     void drawSelectedCard(UIState* ui);
+    void drawDestroyCardModal(UIState* ui);
     void drawPlayerCityButtons(UIState* ui, UIGameState* uiGameState);
     void drawPlayerCityView(UIState* ui, UIGameState* uiGameState);
     float drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth);

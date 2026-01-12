@@ -1,4 +1,4 @@
-ï»¿#include "7WDuelRenderer.h"
+#include "7WDuelRenderer.h"
 
 #include <algorithm>
 #include <vector>
@@ -41,6 +41,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
         ui->hoveredWonderIndex = -1;
         ui->hoveredScienceToken = -1;
         ui->hoveredWonder = -1;
+        ui->hoveredDestroyCardId = -1;
         ui->moveRequested = false;
     }
 
@@ -107,6 +108,7 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
     {
         drawCardGraph(ui);
         drawSelectedCard(ui);
+        drawDestroyCardModal(ui);
     }
 }
 
@@ -292,7 +294,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
     }
     curY += baseRowH + spacing;
 
-    // Row 5: Owned Guilds â€” removed (not needed). Advance Y to keep consistent row spacing.
+    // Row 5: Owned Guilds — removed (not needed). Advance Y to keep consistent row spacing.
     {
         curY += baseRowH + spacing;
     }
@@ -398,7 +400,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
         }
     }
 
-    // Row 7: Science symbols owned â€” draw dedicated symbol icons + counts.
+    // Row 7: Science symbols owned — draw dedicated symbol icons + counts.
     // Do NOT draw central science-token images here (those are selectable from
     // the central token area when the controller requests it).
     {
@@ -1249,6 +1251,10 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
             int playableIdx = playableIndexOfNode[nodeIndex];
             if (ui && playableIdx != -1)
             {
+                // If modal is showing, don't process card clicks
+                if (ui->showDestroyCardModal)
+                    continue;
+
                 // right click cancels selection
                 if (ui->rightClick && ui->selectedNode != -1)
                     ui->selectedNode = -1;
@@ -1264,16 +1270,71 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                         // confirmed action: build wonder if the current player's wonder is selected, otherwise pick
                         if (ui->selectedWonderIndex >= 0 && ui->selectedWonderPlayer == (int)m_state.getCurrentPlayerTurn())
                         {
-                            sevenWD::Move mv;
-                            mv.playableCard = u8(playableIdx);
-                            mv.action = sevenWD::Move::Action::BuildWonder;
-                            mv.wonderIndex = u8(ui->selectedWonderIndex);
-                            mv.additionalId = u8(-1);
+                            // Check if this wonder requires card destruction selection
+                            const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(m_state.getCurrentPlayerTurn());
+                            sevenWD::Wonders wonder = myCity.m_unbuildWonders[ui->selectedWonderIndex];
+                            
+                            bool isZeus = (wonder == sevenWD::Wonders::Zeus);
+                            bool isCircusMaximus = (wonder == sevenWD::Wonders::CircusMaximus);
+                            
+                            if (isZeus || isCircusMaximus)
+                            {
+                                // Check if there are cards to destroy
+                                u32 opponentIdx = (m_state.getCurrentPlayerTurn() + 1) % 2;
+                                const sevenWD::PlayerCity& opponentCity = m_state.getPlayerCity(opponentIdx);
+                                
+                                bool hasTargets = false;
+                                if (isZeus)
+                                {
+                                    for (u32 r = u32(sevenWD::ResourceType::FirstBrown); r <= u32(sevenWD::ResourceType::LastBrown); ++r)
+                                    {
+                                        if (opponentCity.m_bestProductionCardId[r] != u8(-1))
+                                        {
+                                            hasTargets = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                else // CircusMaximus
+                                {
+                                    for (u32 r = u32(sevenWD::ResourceType::FirstGrey); r <= u32(sevenWD::ResourceType::LastGrey); ++r)
+                                    {
+                                        if (opponentCity.m_bestProductionCardId[r] != u8(-1))
+                                        {
+                                            hasTargets = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // Show modal for target selection (even if no targets - modal will show "Continue" button)
+                                ui->showDestroyCardModal = true;
+                                ui->pendingBuildWonderIndex = ui->selectedWonderIndex;
+                                ui->pendingPlayableCardIndex = playableIdx;
+                                
+                                // Clear double-click state but keep selection for visual feedback
+                                m_lastClickedNode = -1;
+                                m_lastClickTime = std::chrono::steady_clock::time_point::min();
+                            }
+                            else
+                            {
+                                // Normal wonder build (no destruction)
+                                sevenWD::Move mv;
+                                mv.playableCard = u8(playableIdx);
+                                mv.action = sevenWD::Move::Action::BuildWonder;
+                                mv.wonderIndex = u8(ui->selectedWonderIndex);
+                                mv.additionalId = u8(-1);
 
-                            ui->requestedMove = mv;
-                            ui->moveRequested = true;
-                            ui->selectedWonderPlayer = -1;
-                            ui->selectedWonderIndex = -1;
+                                ui->requestedMove = mv;
+                                ui->moveRequested = true;
+                                ui->selectedWonderPlayer = -1;
+                                ui->selectedWonderIndex = -1;
+                                
+                                // clear selection after confirming
+                                ui->selectedNode = -1;
+                                m_lastClickedNode = -1;
+                                m_lastClickTime = std::chrono::steady_clock::time_point::min();
+                            }
                         }
                         else
                         {
@@ -1285,12 +1346,12 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
 
                             ui->requestedMove = mv;
                             ui->moveRequested = true;
+                            
+                            // clear selection after confirming
+                            ui->selectedNode = -1;
+                            m_lastClickedNode = -1;
+                            m_lastClickTime = std::chrono::steady_clock::time_point::min();
                         }
-
-                        // clear selection after confirming
-                        ui->selectedNode = -1;
-                        m_lastClickedNode = -1;
-                        m_lastClickTime = std::chrono::steady_clock::time_point::min();
                     }
                     else
                     {
@@ -1460,7 +1521,7 @@ void SevenWDuelRenderer::drawMilitaryTrack()
     m_renderer->DrawLine(x0, trackY, x1, trackY, Colors::Red);
 
     // Numeric current military score
-    int pos = m_state.getMilitary();   // -9 â†’ +9
+    int pos = m_state.getMilitary();   // -9 ? +9
     m_renderer->DrawText(std::to_string(pos), x0 - 50.0f, y + 18.0f, Colors::White);
 
     // Draw vertical separators at boundaries (-9.5..+9.5).
@@ -1592,7 +1653,7 @@ void SevenWDuelRenderer::drawSelectedCard(UIState* ui)
                     m_renderer->DrawText("[no wonder image]", mx + 8.0f, my + 8.0f, Colors::White);
                 }
 
-                // Done â€” wonder preview must stay visible even if a node is selected.
+                // Done — wonder preview must stay visible even if a node is selected.
                 return;
             }
         }
@@ -1721,6 +1782,7 @@ SDL_Texture* SevenWDuelRenderer::GetCardBackImage(const sevenWD::Card& card)
     SDL_Texture* tex = m_renderer->LoadImage("assets/cards/card_back.png");
     return tex ? tex : nullptr;
 }
+
 SDL_Texture* SevenWDuelRenderer::GetWonderImage(sevenWD::Wonders wonder)
 {
     if (!m_state.m_context)
@@ -1884,4 +1946,223 @@ SDL_Texture* SevenWDuelRenderer::GetScienceSymbolImage(sevenWD::ScienceSymbol sy
     if (!tex)
         tex = m_renderer->LoadImage("assets/science/symbol.png");
     return tex;
+}
+
+// ---------------------------------------------------------------------
+// Draw modal for selecting which opponent card to destroy (Zeus/CircusMaximus)
+void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
+{
+    if (!ui || !ui->showDestroyCardModal)
+        return;
+
+    // Validate pending state
+    if (ui->pendingBuildWonderIndex < 0 || ui->pendingPlayableCardIndex < 0)
+    {
+        ui->showDestroyCardModal = false;
+        return;
+    }
+
+    const sevenWD::PlayerCity& myCity = m_state.getPlayerCity(m_state.getCurrentPlayerTurn());
+    if (ui->pendingBuildWonderIndex >= myCity.m_unbuildWonderCount)
+    {
+        ui->showDestroyCardModal = false;
+        return;
+    }
+
+    sevenWD::Wonders selectedWonder = myCity.m_unbuildWonders[ui->pendingBuildWonderIndex];
+    
+    bool isZeus = (selectedWonder == sevenWD::Wonders::Zeus);
+    bool isCircusMaximus = (selectedWonder == sevenWD::Wonders::CircusMaximus);
+    
+    if (!isZeus && !isCircusMaximus)
+    {
+        ui->showDestroyCardModal = false;
+        return;
+    }
+
+    // Get opponent's city
+    u32 opponentIdx = (m_state.getCurrentPlayerTurn() + 1) % 2;
+    const sevenWD::PlayerCity& opponentCity = m_state.getPlayerCity(opponentIdx);
+
+    // Collect targetable card IDs
+    std::vector<u8> targetableCardIds;
+    if (isZeus)
+    {
+        // Zeus targets brown cards (Wood, Clay, Stone)
+        for (u32 r = u32(sevenWD::ResourceType::FirstBrown); r <= u32(sevenWD::ResourceType::LastBrown); ++r)
+        {
+            if (opponentCity.m_bestProductionCardId[r] != u8(-1))
+            {
+                u8 cardId = opponentCity.m_bestProductionCardId[r];
+                if (std::find(targetableCardIds.begin(), targetableCardIds.end(), cardId) == targetableCardIds.end())
+                    targetableCardIds.push_back(cardId);
+            }
+        }
+    }
+    else if (isCircusMaximus)
+    {
+        // CircusMaximus targets grey cards (Glass, Papyrus)
+        for (u32 r = u32(sevenWD::ResourceType::FirstGrey); r <= u32(sevenWD::ResourceType::LastGrey); ++r)
+        {
+            if (opponentCity.m_bestProductionCardId[r] != u8(-1))
+            {
+                u8 cardId = opponentCity.m_bestProductionCardId[r];
+                if (std::find(targetableCardIds.begin(), targetableCardIds.end(), cardId) == targetableCardIds.end())
+                    targetableCardIds.push_back(cardId);
+            }
+        }
+    }
+
+    // Modal dimensions
+    const float modalW = 500.0f;
+    const float modalH = 300.0f;
+    const float modalX = (1920.0f - modalW) / 2.0f;
+    const float modalY = (1080.0f - modalH) / 2.0f;
+
+    // Draw semi-transparent overlay
+    SDL_Color overlayColor{ 0, 0, 0, 180 };
+    for (int yy = 0; yy < 1080; ++yy)
+    {
+        m_renderer->DrawLine(0.0f, float(yy), 1920.0f, float(yy), overlayColor);
+    }
+
+    // Draw modal background
+    SDL_Color modalBg{ 40, 40, 50, 255 };
+    for (int yy = int(modalY); yy < int(modalY + modalH); ++yy)
+    {
+        m_renderer->DrawLine(modalX, float(yy), modalX + modalW, float(yy), modalBg);
+    }
+
+    // Draw modal border
+    m_renderer->DrawRect(modalX, modalY, modalW, modalH, Colors::Yellow);
+
+    // Title
+    std::string title = isZeus ? "Zeus: Select a Brown card to destroy" : "Circus Maximus: Select a Grey card to destroy";
+    m_renderer->DrawText(title, modalX + 20.0f, modalY + 20.0f, Colors::Yellow);
+
+    if (targetableCardIds.empty())
+    {
+        // No cards to destroy - show message and skip button
+        m_renderer->DrawText("Opponent has no cards to destroy.", modalX + 20.0f, modalY + 80.0f, Colors::White);
+
+        // Draw "Continue" button
+        const float btnW = 120.0f;
+        const float btnH = 40.0f;
+        const float btnX = modalX + (modalW - btnW) / 2.0f;
+        const float btnY = modalY + modalH - 60.0f;
+
+        bool btnHovered = ui->mouseX >= int(btnX) && ui->mouseX <= int(btnX + btnW) &&
+                          ui->mouseY >= int(btnY) && ui->mouseY <= int(btnY + btnH);
+
+        SDL_Color btnBg = btnHovered ? SDL_Color{ 60, 120, 60, 255 } : SDL_Color{ 40, 80, 40, 255 };
+        for (int yy = int(btnY); yy < int(btnY + btnH); ++yy)
+        {
+            m_renderer->DrawLine(btnX, float(yy), btnX + btnW, float(yy), btnBg);
+        }
+        m_renderer->DrawRect(btnX, btnY, btnW, btnH, btnHovered ? Colors::Green : Colors::White);
+        m_renderer->DrawText("Continue", btnX + 20.0f, btnY + 10.0f, Colors::White);
+
+        if (ui->leftClick && btnHovered)
+        {
+            // Build wonder without destroying any card
+            sevenWD::Move mv;
+            mv.playableCard = u8(ui->pendingPlayableCardIndex);
+            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
+            mv.additionalId = u8(-1);
+
+            ui->requestedMove = mv;
+            ui->moveRequested = true;
+
+            // Close modal and clear state
+            ui->showDestroyCardModal = false;
+            ui->pendingBuildWonderIndex = -1;
+            ui->pendingPlayableCardIndex = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+            ui->selectedNode = -1;
+        }
+        return;
+    }
+
+    // Draw targetable cards
+    const float cardW = 80.0f;
+    const float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+    const float spacing = 16.0f;
+    const float cardsAreaW = targetableCardIds.size() * cardW + (targetableCardIds.size() - 1) * spacing;
+    float startX = modalX + (modalW - cardsAreaW) / 2.0f;
+    float startY = modalY + 70.0f;
+
+    m_renderer->DrawText("Click a card to destroy it:", modalX + 20.0f, startY - 25.0f, Colors::White);
+
+    float x = startX;
+    for (u8 cardId : targetableCardIds)
+    {
+        const sevenWD::Card& card = m_state.m_context->getCard(cardId);
+        SDL_Texture* tex = GetCardImage(card);
+
+        bool hovered = ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
+                       ui->mouseY >= int(startY) && ui->mouseY < int(startY + cardH);
+
+        if (hovered)
+        {
+            ui->hoveredDestroyCardId = cardId;
+            m_renderer->DrawRect(x - 4.0f, startY - 4.0f, cardW + 8.0f, cardH + 8.0f, Colors::Yellow);
+        }
+
+        // Draw the card
+        if (tex)
+            m_renderer->DrawImage(tex, x, startY, cardW, cardH);
+        else
+            m_renderer->DrawText(card.getName() ? card.getName() : "?", x, startY, Colors::White);
+
+        // Handle click to select and build
+        if (ui->leftClick && hovered)
+        {
+            // Build wonder with this card as target
+            sevenWD::Move mv;
+            mv.playableCard = u8(ui->pendingPlayableCardIndex);
+            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
+            mv.additionalId = cardId;
+
+            ui->requestedMove = mv;
+            ui->moveRequested = true;
+
+            // Close modal and clear state
+            ui->showDestroyCardModal = false;
+            ui->pendingBuildWonderIndex = -1;
+            ui->pendingPlayableCardIndex = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+            ui->selectedNode = -1;
+        }
+
+        x += cardW + spacing;
+    }
+
+    // Draw Cancel button
+    const float cancelBtnW = 100.0f;
+    const float cancelBtnH = 36.0f;
+    const float cancelBtnX = modalX + (modalW - cancelBtnW) / 2.0f;
+    const float cancelBtnY = modalY + modalH - 50.0f;
+
+    bool cancelHovered = ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
+                         ui->mouseY >= int(cancelBtnY) && ui->mouseY <= int(cancelBtnY + cancelBtnH);
+
+    SDL_Color cancelBg = cancelHovered ? SDL_Color{ 120, 60, 60, 255 } : SDL_Color{ 80, 40, 40, 255 };
+    for (int yy = int(cancelBtnY); yy < int(cancelBtnY + cancelBtnH); ++yy)
+    {
+        m_renderer->DrawLine(cancelBtnX, float(yy), cancelBtnX + cancelBtnW, float(yy), cancelBg);
+    }
+    m_renderer->DrawRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH, cancelHovered ? Colors::Red : Colors::White);
+    m_renderer->DrawText("Cancel", cancelBtnX + 22.0f, cancelBtnY + 8.0f, Colors::White);
+
+    if ((ui->leftClick && cancelHovered) || ui->rightClick)
+    {
+        // Cancel - close modal without building
+        ui->showDestroyCardModal = false;
+        ui->pendingBuildWonderIndex = -1;
+        ui->pendingPlayableCardIndex = -1;
+    }
 }
