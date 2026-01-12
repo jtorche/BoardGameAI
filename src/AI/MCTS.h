@@ -111,6 +111,7 @@ struct MCTS_Zero : BaseNetworkAI
 	bool m_useNNHeuristic = true;
 	bool m_useDirichletNoise = true;
 	bool m_useTemperature = true;
+	bool m_useBestAvgSampledScenario = false;
 	static constexpr float cEpsilon = 1e-5f;
 
 	using BaseNetworkAI::BaseNetworkAI;

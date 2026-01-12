@@ -341,11 +341,6 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	float puctPriors[GameController::cMaxNumMoves] = { 0 };
 	std::mutex* pMutex = nullptr;
 
-	// In case of many samplings, we can use the best move in avg regarding all sampled states, 
-	// Else we use sum of visits to avoid too much noise in the gameState randomness. This supposely helps in case of low sampling count used during training.
-	// In case of strong play, m_numSampling should be large and the best move is chosen regardless if it is a "very good move" or just a "good move". (especially against humans that will do some mistake anyway).
-	bool useBestAvgSampledScenario = m_numSampling > 16;
-
 	auto processRange = [&](u32 start, u32 end)
 	{
 			core::LinearAllocator linAllocator(8 * 1024 * 1024);
@@ -373,7 +368,11 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 				DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
 				maxDepthAvg += (float)maxDepth;
 
-				if (useBestAvgSampledScenario) {
+				// About m_useBestAvgSampledScenario:
+				// In case of many samplings, we can use the best move in avg regarding all sampled states, 
+				// Else we use sum of visits to avoid too much noise in the gameState randomness. This supposely helps in case of low sampling count used during training.
+				// In case of strong play, m_numSampling should be large and the best move is chosen regardless if it is a "very good move" or just a "good move". (especially against humans that will do some mistake anyway).
+				if (m_useBestAvgSampledScenario) {
 					// find best child in this sampled scenario
 					u32 bestIndex = 0;
 					u32 bestVisits = 0;
@@ -426,7 +425,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	u32 bestIndex = 0;
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
-		scores[i] /= (useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
+		scores[i] /= (m_useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
 		puctPriors[_moves[i].computeMoveFixedIndex()] /= m_numSampling;
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];

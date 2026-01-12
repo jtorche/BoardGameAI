@@ -1061,13 +1061,25 @@ namespace sevenWD
 		_data[i++] = (T)((militaryToken2[_mainPlayer] ? 1:0) + (militaryToken5[_mainPlayer] ? 1:0));
 		_data[i++] = (T)((militaryToken2[opponent] ? 1:0) + (militaryToken5[opponent] ? 1:0));
 
-		for (u32 j = 0; j < u32(ScienceToken::Count); ++j) {
+		constexpr u32 numCardTypeInGraph = u32(CardType::Guild) + 1;
+		for (u32 j = 0; j < (u32(ScienceToken::Count) + numCardTypeInGraph); ++j) {
 			_data[i + j] = 0;
 		}
 		for (u32 j = 0; j < m_numScienceToken; ++j)
 			_data[i + u32(m_scienceTokens[j])] = 1;
 
 		i += u32(ScienceToken::Count);
+
+		for (const CardNode& node : m_graph.m_graph) {
+			if (node.m_visible) {
+				CardType type = m_context->getCard(node.m_cardId).getType();
+				if (u32(type) < numCardTypeInGraph) {
+					_data[i + u32(type)] += 1;
+				}
+			}
+		}
+
+		i += numCardTypeInGraph;
 
 		const PlayerCity& myCity = m_playerCity[_mainPlayer];
 		const PlayerCity& opponentCity = m_playerCity[(_mainPlayer + 1) % 2];

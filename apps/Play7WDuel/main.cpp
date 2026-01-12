@@ -51,7 +51,7 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Zero* activeAI = nullptr;
-    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer32_PUCT, "tl32", true);
+    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer32_PUCT, "tl_32", true);
 	if (pLoadedAI) {
 		activeAI = pLoadedAI;
         pLoadedAI->enableMT();
@@ -510,6 +510,40 @@ int main(int argc, char** argv)
             s->w = sliderW;
             s->h = sliderH;
             s->draw(renderer, uiState.mouseX, uiState.mouseY);
+        }
+
+        // --------------------------
+        // Draw "Best Avg Scenario" toggle (below sliders) + handle click
+        // --------------------------
+        const int bestBtnX = int(sliderBaseX);
+        const int bestBtnY = int(sliderBaseY + float(allSliders.size()) * sliderSpacing + 10.0f);
+        const int bestBtnW = int(sliderW);
+        const int bestBtnH = 36;
+
+        bool bestBtnHovered = uiState.mouseX >= bestBtnX && uiState.mouseX <= bestBtnX + bestBtnW &&
+                              uiState.mouseY >= bestBtnY && uiState.mouseY <= bestBtnY + bestBtnH;
+
+        SDL_Color bestBgColor = activeAI->m_useBestAvgSampledScenario ? SDL_Color{ 24, 96, 160, 220 } : SDL_Color{ 48, 48, 48, 200 };
+        for (int yy = bestBtnY; yy < bestBtnY + bestBtnH; ++yy)
+        {
+            renderer.DrawLine(float(bestBtnX), float(yy), float(bestBtnX + bestBtnW), float(yy), bestBgColor);
+        }
+
+        SDL_Color bestBorderColor = bestBtnHovered ? SDL_Color{ 255, 215, 0, 255 } : SDL_Color{ 200, 200, 200, 255 };
+        renderer.DrawRect(float(bestBtnX), float(bestBtnY), float(bestBtnW), float(bestBtnH), bestBorderColor);
+
+        std::string bestLabel = std::string("Best Avg Sampled Scenario: ") + (activeAI->m_useBestAvgSampledScenario ? "ON" : "OFF");
+        renderer.DrawText(bestLabel, float(bestBtnX + 10), float(bestBtnY + 8), SevenWDuelRenderer::Colors::White);
+
+        if (uiState.leftClick && bestBtnHovered)
+        {
+            activeAI->m_useBestAvgSampledScenario = !activeAI->m_useBestAvgSampledScenario;
+            std::cout << "Best Avg Sampled Scenario set to " << (activeAI->m_useBestAvgSampledScenario ? "ON" : "OFF") << "\n";
+
+            // Consume the click so renderer/game doesn't also act on it
+            uiState.moveRequested = false;
+            uiState.leftClick = false;
+            uiState.rightClick = false;
         }
 
         // When game is over draw both player final scores using computeVictoryPoint()

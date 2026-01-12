@@ -28,7 +28,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     return NetworkType::Net_BaseLine;
 }
 
-static sevenWD::AIInterface* createAIByName(const std::string& name)
+static sevenWD::AIInterface* createAIByName(const std::string& name, bool strongPlayMode)
 {
 	using namespace StringUtil;
 
@@ -169,6 +169,9 @@ static sevenWD::AIInterface* createAIByName(const std::string& name)
                 }
                 pAI->m_numMoves = numMoves;
                 pAI->m_numSampling = numSimu;
+				pAI->m_useTemperature = strongPlayMode ? false : true;
+				pAI->m_useDirichletNoise = strongPlayMode ? false : true;
+				pAI->m_useBestAvgSampledScenario = strongPlayMode ? true : false;
 
                 if (parts.size() >= 5) {
                     parseFloat(trim_copy(parts[4]), pAI->C);
@@ -217,6 +220,7 @@ int main(int argc, char** argv)
             ("net", "Network type for training: BaseLine, TwoLayer8, TwoLayer64", cxxopts::value<std::string>()->default_value("TwoLayer8"))
             ("gen", "Generatio of the network, only impact out filename.", cxxopts::value<u32>()->default_value("0"))
             ("extra", "Use extra tensor data for network", cxxopts::value<bool>()->default_value("false"))
+            ("strongPlay", "Use strong play mode", cxxopts::value<bool>()->default_value("false"))
             ("epochs", "Training epochs", cxxopts::value<uint32_t>()->default_value("16"))
             ("batch", "Batch size as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("32;32;32"))
             ("alpha", "Learning rate for optimizer as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("0.001;0.001;0.001"))
@@ -236,6 +240,7 @@ int main(int argc, char** argv)
 
         if (mode == "generate") {
             uint32_t size = result["size"].as<uint32_t>();
+            bool strongPlay = result["strongPlay"].as<bool>();
 
             // read multiple --ai entries
             std::vector<std::string> aiNames = result["ai"].as<std::vector<std::string>>();
@@ -247,7 +252,7 @@ int main(int argc, char** argv)
 
 			u32 numAIsAdded = 0;
             for (const auto& name : aiNames) {
-                sevenWD::AIInterface* p = createAIByName(name);
+                sevenWD::AIInterface* p = createAIByName(name, strongPlay);
                 if (!p) {
                     std::cout << "Unknown AI name: " << name << " - skipping" << std::endl;
                     continue;

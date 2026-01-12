@@ -13,10 +13,12 @@ REM "%pathTo%\Console.exe" --mode generate --size 50 --ai="MCTS_Deterministic(10
 REM "%pathTo%\Console.exe" --mode generate --size 48 --ai="MCTS_Zero(5000;4)" --ai="MCTS_Deterministic(5000;4)" --ai="MonteCarloAI(3000)" --out tmp --threads 12
 REM "%pathTo%\Console.exe" --mode generate --size 48 --ai="MCTS_Zero(10000;4;TwoLayers16_PUCT;zero)" --ai="MCTS_Deterministic(5000;4)" --ai="MonteCarloAI(3000)" --out tmp --threads 12
 
-"%pathTo%\Console.exe" --mode generate --size 400 ^
---ai="MCTS_Zero(10000;8;TwoLayers16_PUCT;zeroSRL)" ^
---ai="MCTS_Zero(10000;8;TwoLayers16_PUCT;zeroSRL_2)" ^
---ai="MCTS_Zero(10000;8;TwoLayers32_PUCT;tl32)" ^
+REM --ai="MCTS_Zero(10000;8;TwoLayers16_PUCT;zeroSRL)" ^
+REM --ai="MCTS_Zero(10000;8;TwoLayers16_PUCT;zeroSRL_2)" ^
+
+"%pathTo%\Console.exe" --mode generate --strongPlay --size 36 ^
+--ai="MCTS_Zero(50000;32;TwoLayers32_PUCT;tl_32)" ^
+--ai="MCTS_Zero(50000;32;TwoLayers32_PUCT;tl_32_old)" ^
 --out tmp --threads 12
 
 REM "%pathTo%\Console.exe" --mode generate --size 64 --ai="MCTS_Deterministic(5000;4;TwoLayers8;test)" --ai="MCTS_Deterministic(5000;4;TwoLayers8;test)" --out tmp
