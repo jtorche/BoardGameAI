@@ -1946,7 +1946,7 @@ SDL_Texture* SevenWDuelRenderer::GetScienceSymbolImage(sevenWD::ScienceSymbol sy
     if (!tex)
         tex = m_renderer->LoadImage("assets/science/symbol.png");
     return tex;
-}
+}   
 
 // ---------------------------------------------------------------------
 // Draw modal for selecting which opponent card to destroy (Zeus/CircusMaximus)
