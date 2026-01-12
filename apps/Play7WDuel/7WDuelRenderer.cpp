@@ -235,7 +235,7 @@ void SevenWDuelRenderer::drawPlayerPanel(int player, float x, float y, UIState* 
 
     // Row 3: Weak production - explicit icons + numbers (normal / rare)
     {
-        m_renderer->DrawText("Weak:", innerX + margin, curY, Colors::Cyan);
+        m_renderer->DrawText("Multi:", innerX + margin, curY, Colors::Cyan);
 
         // Normal (applies to Wood / Clay / Stone)
         float wx = innerX + margin + 68.0f;

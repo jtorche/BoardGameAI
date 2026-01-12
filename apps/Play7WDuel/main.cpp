@@ -100,6 +100,9 @@ int main(int argc, char** argv)
     // Toggle: when true only player 1 may interact with mouse; player 2 moves must be triggered by space (AI).
     bool onlyPlayer1Mouse = false;
 
+    // Help panel toggle
+    bool showHelpPanel = false;
+
     // Store last AI-chosen score for UI rendering
     float lastAIScore = 0.0f;
     bool lastAIScoreValid = false;
@@ -250,6 +253,12 @@ int main(int argc, char** argv)
     const int bw = 320;
     const int bh = 36;
 
+    // Help button position (below the toggle button, right side)
+    const int helpBtnX = 1600 + 320 - 40; // Align with right edge of toggle button
+    const int helpBtnY = 80; // Below the AI score text area
+    const int helpBtnW = 40;
+    const int helpBtnH = 40;
+
     // -----------------------------------------------------------
     // MAIN LOOP
     // -----------------------------------------------------------
@@ -355,6 +364,11 @@ int main(int argc, char** argv)
                         historyIndex++;
                         restoreSnapshot(historyIndex);
                     }
+                }
+                else if (e.key.key == SDLK_H)
+                {
+                    // Toggle help panel with H key
+                    showHelpPanel = !showHelpPanel;
                 }
             }
 
@@ -583,6 +597,101 @@ int main(int argc, char** argv)
             uiState.moveRequested = false;
             uiState.leftClick = false;
             uiState.rightClick = false;
+        }
+
+        // --------------------------
+        // Draw Help button (top-right corner)
+        // --------------------------
+        bool helpBtnHovered = uiState.mouseX >= helpBtnX && uiState.mouseX <= helpBtnX + helpBtnW &&
+                              uiState.mouseY >= helpBtnY && uiState.mouseY <= helpBtnY + helpBtnH;
+
+        SDL_Color helpBgColor = showHelpPanel ? SDL_Color{ 24, 96, 160, 220 } : SDL_Color{ 48, 48, 48, 200 };
+        for (int yy = helpBtnY; yy < helpBtnY + helpBtnH; ++yy)
+        {
+            renderer.DrawLine(float(helpBtnX), float(yy), float(helpBtnX + helpBtnW), float(yy), helpBgColor);
+        }
+
+        SDL_Color helpBorderColor = helpBtnHovered ? SDL_Color{ 255, 215, 0, 255 } : SDL_Color{ 200, 200, 200, 255 };
+        renderer.DrawRect(float(helpBtnX), float(helpBtnY), float(helpBtnW), float(helpBtnH), helpBorderColor);
+
+        renderer.DrawText("?", float(helpBtnX + 14), float(helpBtnY + 8), SevenWDuelRenderer::Colors::White);
+
+        if (uiState.leftClick && helpBtnHovered)
+        {
+            showHelpPanel = !showHelpPanel;
+
+            // Consume the click
+            uiState.moveRequested = false;
+            uiState.leftClick = false;
+            uiState.rightClick = false;
+        }
+
+        // --------------------------
+        // Draw Help Panel (if visible)
+        // --------------------------
+        if (showHelpPanel)
+        {
+            const int panelW = 500;
+            const int panelH = 480; // Increased from 420 to fit all text
+            const int panelX = 1920 / 2 - panelW / 2;
+            const int panelY = 1080 / 2 - panelH / 2;
+
+            // Draw panel background
+            SDL_Color panelBg{ 30, 30, 30, 240 };
+            for (int yy = panelY; yy < panelY + panelH; ++yy)
+            {
+                renderer.DrawLine(float(panelX), float(yy), float(panelX + panelW), float(yy), panelBg);
+            }
+
+            // Draw border
+            renderer.DrawRect(float(panelX), float(panelY), float(panelW), float(panelH), SDL_Color{ 255, 215, 0, 255 });
+
+            // Title
+            renderer.DrawText("Controls & Shortcuts", float(panelX + 150), float(panelY + 15), SevenWDuelRenderer::Colors::Yellow);
+
+            float textX = float(panelX + 20);
+            float textY = float(panelY + 55);
+            const float lineH = 28.0f;
+
+            // Keyboard shortcuts
+            renderer.DrawText("KEYBOARD:", textX, textY, SevenWDuelRenderer::Colors::Cyan);
+            textY += lineH;
+
+            renderer.DrawText("Space      - AI plays current turn", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Left Arrow - Undo (go back in history)", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Right Arrow - Redo (go forward in history)", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("H          - Toggle this help panel", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH + 10.0f;
+
+            // Mouse actions
+            renderer.DrawText("MOUSE:", textX, textY, SevenWDuelRenderer::Colors::Cyan);
+            textY += lineH;
+
+            renderer.DrawText("Left Click (card)  - Select card", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Double Click (card) - Pick/Build card", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Right Click (card) - Burn card for coins", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Left Click (wonder) - Select wonder to build", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH;
+
+            renderer.DrawText("Right Click (wonder) - Deselect wonder", textX, textY, SevenWDuelRenderer::Colors::White);
+            textY += lineH + 10.0f;
+
+            // Note
+            renderer.DrawText("TIP: Select wonder first, then double-click", textX, textY, SevenWDuelRenderer::Colors::Green);
+            textY += lineH;
+            renderer.DrawText("a card to build that wonder.", textX, textY, SevenWDuelRenderer::Colors::Green);
         }
 
         // If renderer requested a move, validate it against legal moves before executing.
