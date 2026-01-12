@@ -37,7 +37,7 @@ namespace sevenWD::Helper
 		out.push_back('W');
 		out.push_back('G');
 		out.push_back('S');
-		out.push_back(2); // version
+		out.push_back(3); // version 3 (updated for DiscardedCards changes)
 
 		// basic game state scalars
 		writeLE(_state.m_state);
@@ -66,6 +66,43 @@ namespace sevenWD::Helper
 		writeLE(_state.m_numPlayedAgeCards);
 		for (u32 i = 0; i < GameContext::MaxCardsPerAge; ++i)
 			writeLE(_state.m_playedAgeCards[i]);
+
+		// DiscardedCards tracking (NEW in version 3)
+		{
+			const auto& dc = _state.m_discardedCards;
+			
+			// Production cards (5 resource types)
+			for (u32 i = 0; i < u32(ResourceType::Count); ++i)
+				writeLE(dc.bestProductionCardId[i]);
+			
+			// Single cards
+			writeLE(dc.bestBlueCardId);
+			writeLE(dc.bestMilitaryCardId);
+			
+			// Science cards (7 symbols)
+			for (u32 i = 0; i < u32(ScienceSymbol::Count); ++i)
+				writeLE(dc.scienceCardIds[i]);
+			
+			// Guild cards (variable count, max 7)
+			writeLE(dc.numGuildCards);
+			for (u32 i = 0; i < dc.guildCardIds.size(); ++i)
+				writeLE(dc.guildCardIds[i]);
+			
+			// Yellow cards
+			writeLE(dc.bestYellowGoldRewardCardId);
+			writeLE(dc.bestYellowWeakNormalCardId);
+			writeLE(dc.bestYellowWeakRareCardId);
+			
+			// Yellow resource discount cards (variable count, max 4)
+			writeLE(dc.numYellowResourceDiscountCards);
+			for (u32 i = 0; i < dc.yellowResourceDiscountCardIds.size(); ++i)
+				writeLE(dc.yellowResourceDiscountCardIds[i]);
+			
+			// Yellow gold-per-card-type cards (variable count, max 5)
+			writeLE(dc.numYellowGoldPerCardTypeCards);
+			for (u32 i = 0; i < dc.yellowGoldPerCardTypeCardIds.size(); ++i)
+				writeLE(dc.yellowGoldPerCardTypeCardIds[i]);
+		}
 
 		// wonder draft pool and draft round info
 		for (u32 i = 0; i < _state.m_wonderDraftPool.size(); ++i)
@@ -194,7 +231,7 @@ namespace sevenWD::Helper
 		if (!ensure(5)) return false;
 		if (_blob[0] != '7' || _blob[1] != 'W' || _blob[2] != 'G' || _blob[3] != 'S') return false;
 		u8 version = _blob[4];
-		if (version != 2) return false;
+		if (version != 3) return false; // Accept version 3 only
 		idx = 5;
 
 		// Create a fresh GameState with context so internal PlayerCity::m_context are initialized
@@ -236,6 +273,43 @@ namespace sevenWD::Helper
 		for (u32 i = 0; i < GameContext::MaxCardsPerAge; ++i)
 		{
 			if (!readLE_u8(_outState.m_playedAgeCards[i])) return false;
+		}
+
+		// DiscardedCards tracking (NEW in version 3)
+		{
+			auto& dc = _outState.m_discardedCards;
+			
+			// Production cards (5 resource types)
+			for (u32 i = 0; i < u32(ResourceType::Count); ++i)
+				if (!readLE_u8(dc.bestProductionCardId[i])) return false;
+			
+			// Single cards
+			if (!readLE_u8(dc.bestBlueCardId)) return false;
+			if (!readLE_u8(dc.bestMilitaryCardId)) return false;
+			
+			// Science cards (7 symbols)
+			for (u32 i = 0; i < u32(ScienceSymbol::Count); ++i)
+				if (!readLE_u8(dc.scienceCardIds[i])) return false;
+			
+			// Guild cards (variable count, max 7)
+			if (!readLE_u8(dc.numGuildCards)) return false;
+			for (u32 i = 0; i < dc.guildCardIds.size(); ++i)
+				if (!readLE_u8(dc.guildCardIds[i])) return false;
+			
+			// Yellow cards
+			if (!readLE_u8(dc.bestYellowGoldRewardCardId)) return false;
+			if (!readLE_u8(dc.bestYellowWeakNormalCardId)) return false;
+			if (!readLE_u8(dc.bestYellowWeakRareCardId)) return false;
+			
+			// Yellow resource discount cards (variable count, max 4)
+			if (!readLE_u8(dc.numYellowResourceDiscountCards)) return false;
+			for (u32 i = 0; i < dc.yellowResourceDiscountCardIds.size(); ++i)
+				if (!readLE_u8(dc.yellowResourceDiscountCardIds[i])) return false;
+			
+			// Yellow gold-per-card-type cards (variable count, max 5)
+			if (!readLE_u8(dc.numYellowGoldPerCardTypeCards)) return false;
+			for (u32 i = 0; i < dc.yellowGoldPerCardTypeCardIds.size(); ++i)
+				if (!readLE_u8(dc.yellowGoldPerCardTypeCardIds[i])) return false;
 		}
 
 		// wonder draft pool
