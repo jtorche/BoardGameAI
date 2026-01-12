@@ -1320,6 +1320,10 @@ namespace sevenWD
 			id = u8(-1);
 		for (u8& id : guildCardIds)
 			id = u8(-1);
+		for (u8& id : yellowResourceDiscountCardIds)
+			id = u8(-1);
+		for (u8& id : yellowGoldPerCardTypeCardIds)
+			id = u8(-1);
 	}
 
 	void DiscardedCards::add(const GameContext& context, const Card& card)
@@ -1391,7 +1395,7 @@ namespace sevenWD
 
 		case CardType::Yellow:
 		{
-			// Track best gold reward card
+			// Track best gold reward card (direct gold, not per-card-type)
 			if (card.m_goldReward > 0 && !card.m_goldPerNumberOfCardColorTypeCard) {
 				if (bestYellowGoldRewardCardId == u8(-1))
 					bestYellowGoldRewardCardId = cardId;
@@ -1402,7 +1406,7 @@ namespace sevenWD
 				}
 			}
 
-			// Track best weak production cards
+			// Track best weak production cards (Caravanserail, Forum)
 			if (card.m_isWeakProduction) {
 				bool isRare = (card.m_production[u32(ResourceType::Glass)] > 0 || 
 							  card.m_production[u32(ResourceType::Papyrus)] > 0);
@@ -1412,14 +1416,38 @@ namespace sevenWD
 					target = cardId;
 			}
 
-			// Track best VP yellow card
-			if (card.m_victoryPoints > 0) {
-				if (bestYellowVPCardId == u8(-1))
-					bestYellowVPCardId = cardId;
-				else {
-					const Card& existing = context.getCard(bestYellowVPCardId);
-					if (card.m_victoryPoints > existing.m_victoryPoints)
-						bestYellowVPCardId = cardId;
+			// Track resource discount cards (all unique cards, no duplicates)
+			// DepotBois, DepotArgile, DepotPierre, Douane
+			if (card.m_isResourceDiscount) {
+				// Check if this card is already tracked (avoid duplicates)
+				bool alreadyTracked = false;
+				for (u32 i = 0; i < numYellowResourceDiscountCards; ++i) {
+					if (yellowResourceDiscountCardIds[i] == cardId) {
+						alreadyTracked = true;
+						break;
+					}
+				}
+				
+				// Add if not already tracked and we have space
+				if (!alreadyTracked && numYellowResourceDiscountCards < yellowResourceDiscountCardIds.size()) {
+					yellowResourceDiscountCardIds[numYellowResourceDiscountCards++] = cardId;
+				}
+			}
+
+			// Track yellow cards with gold-per-card-type (Armurerie, Phare, Port, ChambreDeCommerce, Arene)
+			if (card.m_goldPerNumberOfCardColorTypeCard) {
+				// Check if this card is already tracked (avoid duplicates)
+				bool alreadyTracked = false;
+				for (u32 i = 0; i < numYellowGoldPerCardTypeCards; ++i) {
+					if (yellowGoldPerCardTypeCardIds[i] == cardId) {
+						alreadyTracked = true;
+						break;
+					}
+				}
+				
+				// Add if not already tracked and we have space
+				if (!alreadyTracked && numYellowGoldPerCardTypeCards < yellowGoldPerCardTypeCardIds.size()) {
+					yellowGoldPerCardTypeCardIds[numYellowGoldPerCardTypeCards++] = cardId;
 				}
 			}
 			break;
@@ -1463,15 +1491,27 @@ namespace sevenWD
 				outCardIds.push_back(guildCardIds[i]);
 		}
 
-		// Add yellow cards
+		// Add yellow cards (all categories)
 		if (bestYellowGoldRewardCardId != u8(-1))
 			outCardIds.push_back(bestYellowGoldRewardCardId);
 		if (bestYellowWeakNormalCardId != u8(-1))
 			outCardIds.push_back(bestYellowWeakNormalCardId);
 		if (bestYellowWeakRareCardId != u8(-1))
 			outCardIds.push_back(bestYellowWeakRareCardId);
-		if (bestYellowVPCardId != u8(-1))
-			outCardIds.push_back(bestYellowVPCardId);
+		
+		// Add all unique resource discount cards (no duplicates)
+		for (u32 i = 0; i < numYellowResourceDiscountCards; ++i)
+		{
+			if (yellowResourceDiscountCardIds[i] != u8(-1))
+				outCardIds.push_back(yellowResourceDiscountCardIds[i]);
+		}
+		
+		// Add all unique gold-per-card-type cards (no duplicates)
+		for (u32 i = 0; i < numYellowGoldPerCardTypeCards; ++i)
+		{
+			if (yellowGoldPerCardTypeCardIds[i] != u8(-1))
+				outCardIds.push_back(yellowGoldPerCardTypeCardIds[i]);
+		}
 	}
 
 	bool DiscardedCards::hasRevivableCards() const
@@ -1491,7 +1531,8 @@ namespace sevenWD
 		if (bestYellowGoldRewardCardId != u8(-1)) return true;
 		if (bestYellowWeakNormalCardId != u8(-1)) return true;
 		if (bestYellowWeakRareCardId != u8(-1)) return true;
-		if (bestYellowVPCardId != u8(-1)) return true;
+		if (numYellowResourceDiscountCards > 0) return true;
+		if (numYellowGoldPerCardTypeCards > 0) return true;
 		
 		return false;
 	}

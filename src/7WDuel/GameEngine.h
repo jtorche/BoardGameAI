@@ -59,11 +59,15 @@ namespace sevenWD
 		std::array<u8, 7> guildCardIds;
 		u8 numGuildCards = 0;
 		// For Yellow: track cards that give unique benefits
-		// We'll track: best gold reward, best weak production (normal), best weak production (rare)
-		u8 bestYellowGoldRewardCardId = u8(-1);
-		u8 bestYellowWeakNormalCardId = u8(-1);
-		u8 bestYellowWeakRareCardId = u8(-1);
-		u8 bestYellowVPCardId = u8(-1);
+		u8 bestYellowGoldRewardCardId = u8(-1);          // Best direct gold reward card (Taverne, Brasserie)
+		u8 bestYellowWeakNormalCardId = u8(-1);          // Best weak production for Wood/Clay/Stone (Caravanserail)
+		u8 bestYellowWeakRareCardId = u8(-1);            // Best weak production for Glass/Papyrus (Forum)
+		// Resource discount cards: track all unique discount cards (DepotBois, DepotArgile, DepotPierre, Douane)
+		std::array<u8, 4> yellowResourceDiscountCardIds;
+		u8 numYellowResourceDiscountCards = 0;
+		// Yellow cards with setGoldRewardForCardColorCount: track all unique (5 in game: Armurerie, Phare, Port, ChambreDeCommerce, Arene)
+		std::array<u8, 5> yellowGoldPerCardTypeCardIds;
+		u8 numYellowGoldPerCardTypeCards = 0;
 	
 		DiscardedCards();
 		void add(const GameContext& context, const Card& card);
