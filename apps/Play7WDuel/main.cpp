@@ -59,9 +59,10 @@ int main(int argc, char** argv)
     }
 
     if (!activeAI) {
-        // activeAI = new MCTS_Deterministic(10000, 50, true);
-		std::cerr << "Failed to load AI.\n";
-        return 1;
+        
+		std::cerr << "Failed to load AI model.\n";
+        activeAI = new MCTS_Zero(10000, 50, true);
+        // return 1;
     }
 
     std::cout << "Loaded AI: " << activeAI->getName() << "\n";
@@ -183,6 +184,7 @@ int main(int argc, char** argv)
             break;
         }
         case Action::BuildWonder:
+        case Action::BuildMausoleum:
         {
             const sevenWD::Card& wonderCard = gameController.m_gameState.getCurrentPlayerWonder(move.wonderIndex);
             uiGameState.pickedCards[actingPlayer].push_back(&wonderCard);

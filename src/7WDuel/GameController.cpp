@@ -49,7 +49,7 @@ namespace sevenWD
 					{
 						for (u8 burnIndex = 0; burnIndex < m_gameState.getNumPlayableCards(); ++burnIndex)
 						{
-							Move move{ burnIndex, Move::Action::BuildWonder, i };
+							Move move{ burnIndex, wonder == Wonders::Mausoleum ? Move::Action::BuildMausoleum : Move::Action::BuildWonder, i };
 
 							switch (wonder)
 							{
@@ -190,7 +190,7 @@ namespace sevenWD
 		}
 		else if (_move.action == Move::Burn)
 			m_gameState.burn(_move.playableCard);
-		else if (_move.action == Move::BuildWonder)
+		else if (_move.action == Move::BuildWonder || _move.action == Move::BuildMausoleum)
 		{
 			Wonders wonder = Wonders(m_gameState.getCurrentPlayerWonder(_move.wonderIndex).getSecondaryType());
 			action = m_gameState.buildWonder(_move.playableCard, _move.wonderIndex, _move.additionalId);
@@ -261,6 +261,7 @@ namespace sevenWD
 			return m_gameState.getPlayableCard(move.playableCard).print(out);
 
 		case Move::BuildWonder:
+		case Move::BuildMausoleum:
 		{
 			out << "Build wonder ";
 			Wonders wonderType = Wonders(m_gameState.getCurrentPlayerWonder(move.wonderIndex).getSecondaryType());

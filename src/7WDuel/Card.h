@@ -23,6 +23,7 @@ namespace sevenWD
 		u8 getAgeId() const { return m_ageId; }
 		u8 getMilitary() const { return m_military; }
 		u8 getGoldCost() const { return m_goldCost; }
+		u8 getVictoryPoints() const { return m_victoryPoints; }
 
 		CardType getType() const { return m_type; }
 		u8 getSecondaryType() const { return m_secondaryType; }

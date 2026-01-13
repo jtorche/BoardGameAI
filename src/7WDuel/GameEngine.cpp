@@ -1079,6 +1079,16 @@ namespace sevenWD
 
 		i += u32(ScienceToken::Count);
 
+		// A few info about card that could be revived by Mausoleum
+		_data[i++] = (T)(m_discardedCards.bestBlueCardId != u8(-1) ? m_context->getCard(m_discardedCards.bestBlueCardId).getVictoryPoints() : 0);
+		_data[i++] = (T)(m_discardedCards.bestMilitaryCardId != u8(-1) ? m_context->getCard(m_discardedCards.bestMilitaryCardId).getMilitary() : 0);
+		_data[i++] = (T)m_discardedCards.numGuildCards;
+
+		static_assert(u32(ScienceSymbol::Law) == u32(ScienceSymbol::Count) - 1); // Law cannot be discarded
+		for (u32 j = 0; j < u32(ScienceSymbol::Count)-1; ++j) {
+			_data[i++] = (T)m_discardedCards.scienceCardIds[j];
+		}
+		
 		for (const CardNode& node : m_graph.m_graph) {
 			if (node.m_visible) {
 				CardType type = m_context->getCard(node.m_cardId).getType();
@@ -1202,7 +1212,8 @@ namespace sevenWD
 					_data[i * TensorSizePerWonder + 5] = (T)(wonder.m_goldReward);
 					_data[i * TensorSizePerWonder + 6] = (T)((wonderType == Wonders::Zeus || wonderType == Wonders::CircusMaximus) ? 1 : 0);
 					_data[i * TensorSizePerWonder + 7] = (T)(wonderType == Wonders::GreatLibrary ? 1 : 0);
-					_data[i * TensorSizePerWonder + 8] = (T)(m_playerCity[m_playerTurn].computeCost(wonder, m_playerCity[(m_playerTurn + 1) % 2]));
+					_data[i * TensorSizePerWonder + 8] = (T)(wonderType == Wonders::Mausoleum ? 1 : 0);
+					_data[i * TensorSizePerWonder + 9] = (T)(m_playerCity[m_playerTurn].computeCost(wonder, m_playerCity[(m_playerTurn + 1) % 2]));
 				}
 				for (u32 i = unbuildWCount; i < 4; ++i) {
 					for (u32 j = 0; j < TensorSizePerWonder; ++j)

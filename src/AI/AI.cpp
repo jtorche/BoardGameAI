@@ -59,7 +59,7 @@ namespace sevenWD
 				CardType type = _game.m_gameState.getPlayableCard(m.playableCard).getType();
 				score += priority[age][(int)type];
 			}
-			else if (m.action == Move::BuildWonder) {
+			else if (m.action == Move::BuildWonder || m.action == Move::BuildMausoleum) {
 				score += 10.0f;
 				u32 age = _game.m_gameState.getCurrentAge();
 				score += priority[age][(int)CardType::Wonder];

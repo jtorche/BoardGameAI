@@ -1335,7 +1335,8 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                                 // Normal wonder build (no destruction/revival)
                                 sevenWD::Move mv;
                                 mv.playableCard = u8(playableIdx);
-                                mv.action = sevenWD::Move::Action::BuildWonder;
+                                // Use BuildMausoleum action for Mausoleum, BuildWonder for all others
+                                mv.action = isMausoleum ? sevenWD::Move::Action::BuildMausoleum : sevenWD::Move::Action::BuildWonder;
                                 mv.wonderIndex = u8(ui->selectedWonderIndex);
                                 mv.additionalId = u8(-1);
 
@@ -2078,10 +2079,10 @@ void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
 
         if (ui->leftClick && btnHovered)
         {
-            // Build wonder without destroying any card
+            // Build Mausoleum wonder without reviving any card
             sevenWD::Move mv;
             mv.playableCard = u8(ui->pendingPlayableCardIndex);
-            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.action = sevenWD::Move::Action::BuildMausoleum;
             mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
             mv.additionalId = u8(-1);
 
@@ -2264,10 +2265,10 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
 
         if (ui->leftClick && btnHovered)
         {
-            // Build wonder without reviving any card
+            // Build Mausoleum wonder without reviving any card
             sevenWD::Move mv;
             mv.playableCard = u8(ui->pendingPlayableCardIndex);
-            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.action = sevenWD::Move::Action::BuildMausoleum;
             mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
             mv.additionalId = u8(-1);
 
@@ -2332,10 +2333,10 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
         // Handle click to select and build
         if (ui->leftClick && hovered)
         {
-            // Build wonder with this card as revival target
+            // Build Mausoleum wonder with this card as revival target
             sevenWD::Move mv;
             mv.playableCard = u8(ui->pendingPlayableCardIndex);
-            mv.action = sevenWD::Move::Action::BuildWonder;
+            mv.action = sevenWD::Move::Action::BuildMausoleum;
             mv.wonderIndex = u8(ui->pendingBuildWonderIndex);
             mv.additionalId = cardId;
 

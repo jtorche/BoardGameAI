@@ -368,6 +368,9 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 				DEBUG_ASSERT(pRoot->m_numChildren == sampledVisits.size());
 				maxDepthAvg += (float)maxDepth;
 
+				// Get context from game state
+				const sevenWD::GameContext* pContext = pRoot->m_gameState.m_gameState.m_context;
+
 				// About m_useBestAvgSampledScenario:
 				// In case of many samplings, we can use the best move in avg regarding all sampled states, 
 				// Else we use sum of visits to avoid too much noise in the gameState randomness. This supposely helps in case of low sampling count used during training.
@@ -378,7 +381,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 					u32 bestVisits = 0;
 					for (u32 j = 0; j < pRoot->m_numChildren; ++j) {
 						const MTCS_Node* pChild = pRoot->m_children[j];
-						u32 moveFixedIndex = pChild->m_move_from_parent.computeMoveFixedIndex();
+						u32 moveFixedIndex = pChild->m_move_from_parent.computeMoveFixedIndex(*pContext);
 						puctPriors[moveFixedIndex] += (float)pChild->m_visits / pRoot->m_visits;
 						if (pRoot->m_children[bestIndex]->m_visits > 0) {
 							scores[j] += pChild->m_totalRewards / pChild->m_visits;
@@ -398,7 +401,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 						sampledVisits[j] += pRoot->m_children[j]->m_visits;
 						scores[j] += pRoot->m_children[j]->m_totalRewards;
 
-						u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex();
+						u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex(*pContext);
 						puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
 					}
 				}
@@ -421,12 +424,15 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 
 	maxDepthAvg = maxDepthAvg / m_numSampling;
 
+	// Get context from game state
+	const sevenWD::GameContext* pContext = _game.m_gameState.m_context;
+
 	// select best move among all sampled visits
 	u32 bestIndex = 0;
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
 		scores[i] /= (m_useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
-		puctPriors[_moves[i].computeMoveFixedIndex()] /= m_numSampling;
+		puctPriors[_moves[i].computeMoveFixedIndex(*pContext)] /= m_numSampling;
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];
 			bestIndex = i;
@@ -481,10 +487,13 @@ void MCTS_Zero::initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const sev
 		}
 	}
 
+	// Get context from the game state
+	const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
+
 	// Mask non valid moves and normalize the output probability
 	float mask[sevenWD::GameController::cMaxNumMoves] = { 0 };
 	for (u32 i = 0; i < numMoves; ++i) {
-		const u32 fixedIndex = moves[i].computeMoveFixedIndex();
+		const u32 fixedIndex = moves[i].computeMoveFixedIndex(*pContext);
 		mask[fixedIndex] = 1.0;
 
 		if (moves[i].action == sevenWD::Move::Action::Pick && m_scienceBoost > 0.f) {
@@ -544,8 +553,10 @@ void MCTS_Zero::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numM
 		float epsilon = 0.25f;
 		float alpha = 0.3f;
 		std::vector<float> noise = sample_dirichlet(numMoves, alpha, m_rand);
+		// Get context from the game state
+		const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
 		for (u32 a = 0; a < numMoves; ++a) {
-			u32 id = moves[a].computeMoveFixedIndex();
+			u32 id = moves[a].computeMoveFixedIndex(*pContext);
 			pNode->m_puctPriors[id] = (1.0f - epsilon) * pNode->m_puctPriors[id] + epsilon * noise[a];
 		}
 	}
@@ -583,6 +594,9 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 	// Parent visit count for exploration term
 	const float parentVisits = static_cast<float>(pNode->m_visits) + 1.0f;
 
+	// Get context from the game state
+	const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
+
 	for (u32 i = 0; i < pNode->m_numChildren; ++i) {
 		MTCS_Node* pChild = pNode->m_children[i];
 
@@ -603,7 +617,7 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 	    float qValue = (childVisits == 0) ? 0.5f : pChild->m_totalRewards / childVisits;
 
 		// P(s,a) from priors
-		const u32 moveIndex = pNode->m_pMoves[i].computeMoveFixedIndex();
+		const u32 moveIndex = pNode->m_pMoves[i].computeMoveFixedIndex(*pContext);
 		const float prior = pNode->m_puctPriors[moveIndex];
 
 		// U(s,a): exploration term

@@ -6,13 +6,13 @@ namespace sevenWD
 {
 	struct Move
 	{
-		enum Action : u8 { Pick, Burn, BuildWonder, ScienceToken, DraftWonder, Count };
+		enum Action : u8 { Pick, Burn, BuildWonder, BuildMausoleum, ScienceToken, DraftWonder };
 		u8 playableCard;
 		Action action;
 		u8 wonderIndex = u8(-1);
 		u8 additionalId = u8(-1);
 
-		u32 computeMoveFixedIndex() const
+		u32 computeMoveFixedIndex(const GameContext& ctx) const
 		{
 			DEBUG_ASSERT(playableCard < 6 || playableCard == u8(-1));
 			switch (action)
@@ -24,7 +24,19 @@ namespace sevenWD
 			case Action::Burn:
 				return 6 + playableCard;
 			case Action::BuildWonder:
-				return 12 + wonderIndex * 6 + playableCard;
+			case Action::BuildMausoleum:
+			{
+				bool isReviveScienceOrMilitaryWithMausoleum = false;
+				if (action == Action::BuildMausoleum && additionalId != u8(-1)) {
+					CardType reviveType = ctx.getCard(additionalId).getType();
+					isReviveScienceOrMilitaryWithMausoleum = (reviveType == CardType::Science || reviveType == CardType::Military);
+				}
+				if (isReviveScienceOrMilitaryWithMausoleum) {
+					return 36 + playableCard; // assign a unique slot for this special case to help network discover strong play pattern (to achieve tricky science/military win)
+				} else {
+					return 12 + wonderIndex * 6 + playableCard;
+				}
+			}
 			default:
 				DEBUG_ASSERT(0);
 				return 0;
@@ -42,7 +54,7 @@ namespace sevenWD
 
 	struct GameController
 	{
-		static constexpr u32 cMaxNumMoves = 36; // 6 pickable cards * (pick + burn + buildWonders * 4) = 6*(1+1+4)=36
+		static constexpr u32 cMaxNumMoves = 42; // 6 pickable cards * (pick + burn + (buildWonders * 4) + SpecialMausoleum) = 6*(1+1+4+1)=42
 
 		using State = GameState::State;
 
