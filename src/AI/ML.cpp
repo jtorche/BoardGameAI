@@ -552,7 +552,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 
 std::string ML_Toolbox::buildNetFilename(std::string netName, std::string namePrefix, bool useExtraTensorData, u32 age, u32 generation) {
 	std::stringstream str;
-	str << "../7wDataset/net_" << netName << (useExtraTensorData ? "_extra" : "_base") << "_" << namePrefix << "_gen" << generation << "_age" << age;
+	str << "Dataset/net_" << netName << (useExtraTensorData ? "_extra" : "_base") << "_" << namePrefix << "_gen" << generation << "_age" << age;
 #if defined(USE_TINY_DNN)
 	str << "_tinydnn";
 #endif
@@ -627,7 +627,7 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 {
 	std::vector<std::string> networksFilenames[3];
 	try {
-		for (const auto& entry : std::filesystem::directory_iterator("../7wDataset")) {
+		for (const auto& entry : std::filesystem::directory_iterator("Dataset/")) {
 			if (!entry.is_regular_file()) continue;
 			std::string filename = entry.path().filename().u8string();
 			std::string networkName = std::string(BaseNN::getNetworkName(netType)) + (useExtraTensorData ? "_extra" : "_base") + "_" + namePrefix;
@@ -659,7 +659,7 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 
 	for (int age = 0; age < 3; ++age) {
 		net[age] = constructNet(netType, useExtraTensorData);
-		std::string netFilePath = std::string("../7wDataset/") + networksFilenames[age][index];
+		std::string netFilePath = std::string("Dataset/") + networksFilenames[age][index];
 #ifdef USE_TINY_DNN
 		net[age]->getNetwork().load(netFilePath);
 #else

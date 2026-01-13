@@ -390,5 +390,6 @@ FodyWeavers.xsd
 
 # Project specific settings
 build/
+Dataset/
 assets/
 *.bin

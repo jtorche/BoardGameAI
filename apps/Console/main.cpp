@@ -332,13 +332,13 @@ int main(int argc, char** argv)
 
 			NetworkType netType = parseNetType(netTypeStr);
 			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_TwoLayer32_PUCT);
-            // Load datasets (3 ages) from ../7wDataset/<inPrefix>dataset_ageX.bin
+            // Load datasets (3 ages) from Dataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
                 return 1;
             }
 
-            std::string datasetDir = "../7wDataset/";
+            std::string datasetDir = "Dataset/";
             GameContext context(42); // deterministic card tables; seed doesn't matter for deserializing
 
             ML_Toolbox::Dataset dataset[3];

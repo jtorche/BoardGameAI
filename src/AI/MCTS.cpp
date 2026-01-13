@@ -339,6 +339,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	std::vector<u32> sampledVisits(_moves.size(), 0);
 	std::vector<float> scores(_moves.size(), 0);
 	float puctPriors[GameController::cMaxNumMoves] = { 0 };
+	u32 puctPriorsWeight[GameController::cMaxNumMoves] = { 0 };
 	std::mutex* pMutex = nullptr;
 
 	auto processRange = [&](u32 start, u32 end)
@@ -383,6 +384,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 						const MTCS_Node* pChild = pRoot->m_children[j];
 						u32 moveFixedIndex = pChild->m_move_from_parent.computeMoveFixedIndex(*pContext);
 						puctPriors[moveFixedIndex] += (float)pChild->m_visits / pRoot->m_visits;
+						puctPriorsWeight[moveFixedIndex]++;
 						if (pRoot->m_children[bestIndex]->m_visits > 0) {
 							scores[j] += pChild->m_totalRewards / pChild->m_visits;
 						}
@@ -403,6 +405,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 
 						u32 moveFixedIndex = pRoot->m_children[j]->m_move_from_parent.computeMoveFixedIndex(*pContext);
 						puctPriors[moveFixedIndex] += (float)pRoot->m_children[j]->m_visits / pRoot->m_visits;
+						puctPriorsWeight[moveFixedIndex]++;
 					}
 				}
 
@@ -432,10 +435,15 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	u32 bestVisits = 0;
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
 		scores[i] /= (m_useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
-		puctPriors[_moves[i].computeMoveFixedIndex(*pContext)] /= m_numSampling;
 		if (sampledVisits[i] > bestVisits) {
 			bestVisits = sampledVisits[i];
 			bestIndex = i;
+		}
+	}
+
+	for (u32 i = 0; i < GameController::cMaxNumMoves; ++i) {
+		if (puctPriorsWeight[i] > 0) {
+			puctPriors[i] /= (float)puctPriorsWeight[i];
 		}
 	}
 

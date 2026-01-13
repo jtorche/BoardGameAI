@@ -229,7 +229,7 @@ void Tournament::serializeDataset(const std::string& filenamePrefix) const
 	using namespace std::filesystem;
 	namespace fs = std::filesystem;
 
-	const std::string outDir = "../7wDataset";
+	const std::string outDir = "Dataset";
 	std::error_code ec;
 	fs::create_directories(outDir, ec);
 	if (ec) {
@@ -259,7 +259,7 @@ void Tournament::deserializeDataset(const std::string& filenamePrefix) const
 	// method is const in header; cast away const to update internal datasets
 	Tournament* self = const_cast<Tournament*>(this);
 
-	const std::string inDir = "../7wDataset";
+	const std::string inDir = "Dataset";
 	for (u32 age = 0; age < 3; ++age) {
 		std::stringstream ss;
 		ss << inDir << "/" << filenamePrefix << "_dataset_age" << age << ".bin";
