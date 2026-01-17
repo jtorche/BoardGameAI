@@ -49,6 +49,13 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
     drawBackground();
     drawPlayerCityButtons(ui, uiGameState);
 
+    // Handle discarded cards view (NEW)
+    if (uiGameState && uiGameState->viewingDiscardedCards)
+    {
+        drawDiscardedCardsView(ui, uiGameState);
+        return;
+    }
+
     if (uiGameState && uiGameState->viewingPlayerCity && uiGameState->viewedPlayer >= 0)
     {
         drawPlayerCityView(ui, uiGameState);
@@ -67,35 +74,35 @@ void SevenWDuelRenderer::draw(UIState* ui, UIGameState* uiGameState)
         const sevenWD::GameController* gc = ui->gameController;
 
         auto stateToStr = [](sevenWD::GameController::State s) -> const char*
-        {
-            using S = sevenWD::GameController::State;
-            switch (s)
             {
-            case S::DraftWonder: return "DraftWonder";
-            case S::Play: return "Play";
-            case S::PickScienceToken: return "PickScienceToken";
-            case S::GreatLibraryToken: return "GreatLibraryToken";
-            case S::GreatLibraryTokenThenReplay: return "GreatLibraryTokenThenReplay";
-            case S::WinPlayer0: return "Win Player 1";
-            case S::WinPlayer1: return "Win Player 2";
-            default: return "Unknown";
-            }
-        };
+                using S = sevenWD::GameController::State;
+                switch (s)
+                {
+                case S::DraftWonder: return "DraftWonder";
+                case S::Play: return "Play";
+                case S::PickScienceToken: return "PickScienceToken";
+                case S::GreatLibraryToken: return "GreatLibraryToken";
+                case S::GreatLibraryTokenThenReplay: return "GreatLibraryTokenThenReplay";
+                case S::WinPlayer0: return "Win Player 1";
+                case S::WinPlayer1: return "Win Player 2";
+                default: return "Unknown";
+                }
+            };
 
         auto winToStr = [](sevenWD::WinType w) -> const char*
-        {
-            switch (w)
             {
-            case sevenWD::WinType::None: return "None";
-            case sevenWD::WinType::Civil: return "Civil";
-            case sevenWD::WinType::Military: return "Military";
-            case sevenWD::WinType::Science: return "Science";
-            default: return "Unknown";
-            }
-        };
+                switch (w)
+                {
+                case sevenWD::WinType::None: return "None";
+                case sevenWD::WinType::Civil: return "Civil";
+                case sevenWD::WinType::Military: return "Military";
+                case sevenWD::WinType::Science: return "Science";
+                default: return "Unknown";
+                }
+            };
 
         std::string ctrlText = std::string("Controller: ") + stateToStr(gc->m_gameState.m_state) +
-                               "  WinType: " + winToStr(gc->m_winType);
+            "  WinType: " + winToStr(gc->m_winType);
         // draw below the player-turn text
         m_renderer->DrawText(ctrlText, 20.0f, 44.0f, Colors::Yellow);
     }
@@ -456,20 +463,20 @@ void SevenWDuelRenderer::drawPlayerCityButtons(UIState* ui, UIGameState* uiGameS
     const float spacing = 28.0f;
 
     auto drawButton = [&](float x, float y, const std::string& label, bool hovered, bool active)
-    {
-        SDL_Texture* panel = GetBackgroundPanel();
-        if (panel)
-            m_renderer->DrawImage(panel, x, y, buttonW, buttonH);
-        SDL_Color borderColor = active ? Colors::Green : (hovered ? Colors::Yellow : Colors::White);
-        m_renderer->DrawRect(x, y, buttonW, buttonH, borderColor);
-        m_renderer->DrawText(label, x + 14.0f, y + 12.0f, Colors::White);
-    };
+        {
+            SDL_Texture* panel = GetBackgroundPanel();
+            if (panel)
+                m_renderer->DrawImage(panel, x, y, buttonW, buttonH);
+            SDL_Color borderColor = active ? Colors::Green : (hovered ? Colors::Yellow : Colors::White);
+            m_renderer->DrawRect(x, y, buttonW, buttonH, borderColor);
+            m_renderer->DrawText(label, x + 14.0f, y + 12.0f, Colors::White);
+        };
 
     for (int player = 0; player < 2; ++player)
     {
         float x = startX + player * (buttonW + spacing);
         bool hovered = ui && ui->mouseX >= int(x) && ui->mouseX <= int(x + buttonW) &&
-                        ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
+            ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
         bool active = uiGameState && uiGameState->viewingPlayerCity && uiGameState->viewedPlayer == player;
 
         drawButton(x, topY, "Player " + std::to_string(player + 1) + " city", hovered, active);
@@ -478,6 +485,33 @@ void SevenWDuelRenderer::drawPlayerCityButtons(UIState* ui, UIGameState* uiGameS
         {
             uiGameState->viewingPlayerCity = true;
             uiGameState->viewedPlayer = player;
+            uiGameState->viewingDiscardedCards = false;  // Close discarded view if open
+            ui->selectedNode = -1;
+            ui->selectedWonderPlayer = -1;
+            ui->selectedWonderIndex = -1;
+        }
+    }
+
+    // NEW: Discarded Cards button (next to player city buttons)
+    {
+        float discardBtnX = startX + 2 * (buttonW + spacing);
+        bool hovered = ui && ui->mouseX >= int(discardBtnX) && ui->mouseX <= int(discardBtnX + buttonW) &&
+            ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
+        bool active = uiGameState && uiGameState->viewingDiscardedCards;
+
+        // Use cyan border when active to match the discarded cards panel style
+        SDL_Texture* panel = GetBackgroundPanel();
+        if (panel)
+            m_renderer->DrawImage(panel, discardBtnX, topY, buttonW, buttonH);
+        SDL_Color borderColor = active ? Colors::Cyan : (hovered ? Colors::Yellow : Colors::White);
+        m_renderer->DrawRect(discardBtnX, topY, buttonW, buttonH, borderColor);
+        m_renderer->DrawText("Discarded", discardBtnX + 14.0f, topY + 12.0f, Colors::Cyan);
+
+        if (ui && uiGameState && ui->leftClick && hovered)
+        {
+            uiGameState->viewingDiscardedCards = !uiGameState->viewingDiscardedCards;  // Toggle
+            uiGameState->viewingPlayerCity = false;  // Close player city view if open
+            uiGameState->viewedPlayer = -1;
             ui->selectedNode = -1;
             ui->selectedWonderPlayer = -1;
             ui->selectedWonderIndex = -1;
@@ -488,7 +522,7 @@ void SevenWDuelRenderer::drawPlayerCityButtons(UIState* ui, UIGameState* uiGameS
     {
         float backX = startX - buttonW - spacing;
         bool hovered = ui && ui->mouseX >= int(backX) && ui->mouseX <= int(backX + buttonW) &&
-                        ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
+            ui->mouseY >= int(topY) && ui->mouseY <= int(topY + buttonH);
         drawButton(backX, topY, "Back", hovered, false);
         if (ui && ui->leftClick && hovered)
         {
@@ -2378,5 +2412,123 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
         ui->showReviveCardModal = false;
         ui->pendingBuildWonderIndex = -1;
         ui->pendingPlayableCardIndex = -1;
+    }
+}
+
+// ---------------------------------------------------------------------
+// Draw read-only view of discarded cards (cards that can be revived by Mausoleum)
+void SevenWDuelRenderer::drawDiscardedCardsView(UIState* ui, UIGameState* uiGameState)
+{
+    if (!uiGameState || !uiGameState->viewingDiscardedCards)
+        return;
+
+    // Get revivable cards
+    std::vector<u8> revivableCardIds;
+    m_state.m_discardedCards.getRevivableCards(revivableCardIds);
+
+    // Panel dimensions
+    const float panelW = 800.0f;
+    const float panelH = 500.0f;
+    const float panelX = (1920.0f - panelW) / 2.0f;
+    const float panelY = (1080.0f - panelH) / 2.0f;
+
+    // Draw semi-transparent overlay
+    SDL_Color overlayColor{ 0, 0, 0, 180 };
+    for (int yy = 0; yy < 1080; ++yy)
+    {
+        m_renderer->DrawLine(0.0f, float(yy), 1920.0f, float(yy), overlayColor);
+    }
+
+    // Draw panel background
+    SDL_Color panelBg{ 40, 40, 50, 255 };
+    for (int yy = int(panelY); yy < int(panelY + panelH); ++yy)
+    {
+        m_renderer->DrawLine(panelX, float(yy), panelX + panelW, float(yy), panelBg);
+    }
+
+    // Draw panel border
+    m_renderer->DrawRect(panelX, panelY, panelW, panelH, Colors::Cyan);
+
+    // Title
+    std::string title = "Discarded Cards (Mausoleum Revival Pool)";
+    m_renderer->DrawText(title, panelX + 20.0f, panelY + 20.0f, Colors::Cyan);
+
+    if (revivableCardIds.empty())
+    {
+        // No cards discarded yet
+        m_renderer->DrawText("No cards have been discarded yet.", panelX + 20.0f, panelY + 80.0f, Colors::White);
+        m_renderer->DrawText("Cards burned or destroyed will appear here.", panelX + 20.0f, panelY + 110.0f, Colors::White);
+    }
+    else
+    {
+        // Draw count
+        std::string countText = std::to_string(revivableCardIds.size()) + " card(s) available for revival";
+        m_renderer->DrawText(countText, panelX + 20.0f, panelY + 50.0f, Colors::White);
+
+        // Draw cards in a grid
+        const float cardW = 72.0f;
+        const float cardH = cardW * (m_layout.cardH / m_layout.cardW);
+        const float spacing = 12.0f;
+
+        // Calculate grid layout
+        int cardsPerRow = std::min(9, int(revivableCardIds.size()));
+        int numRows = (int(revivableCardIds.size()) + cardsPerRow - 1) / cardsPerRow;
+
+        float gridW = cardsPerRow * cardW + (cardsPerRow - 1) * spacing;
+
+        float startX = panelX + (panelW - gridW) / 2.0f;
+        float startY = panelY + 90.0f;
+
+        int cardIndex = 0;
+        for (u8 cardId : revivableCardIds)
+        {
+            int row = cardIndex / cardsPerRow;
+            int col = cardIndex % cardsPerRow;
+
+            float x = startX + col * (cardW + spacing);
+            float y = startY + row * (cardH + spacing);
+
+            const sevenWD::Card& card = m_state.m_context->getCard(cardId);
+            SDL_Texture* tex = GetCardImage(card);
+
+            // Check hover for visual feedback (but no selection action)
+            bool hovered = ui && ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
+                ui->mouseY >= int(y) && ui->mouseY < int(y + cardH);
+
+            if (hovered)
+            {
+                m_renderer->DrawRect(x - 4.0f, y - 4.0f, cardW + 8.0f, cardH + 8.0f, Colors::Yellow);
+            }
+
+            // Draw the card
+            if (tex)
+                m_renderer->DrawImage(tex, x, y, cardW, cardH);
+            else
+                m_renderer->DrawText(card.getName() ? card.getName() : "?", x, y, Colors::White);
+
+            cardIndex++;
+        }
+    }
+
+    // Draw Close button
+    const float closeBtnW = 100.0f;
+    const float closeBtnH = 36.0f;
+    const float closeBtnX = panelX + (panelW - closeBtnW) / 2.0f;
+    const float closeBtnY = panelY + panelH - 50.0f;
+
+    bool closeHovered = ui && ui->mouseX >= int(closeBtnX) && ui->mouseX <= int(closeBtnX + closeBtnW) &&
+        ui->mouseY >= int(closeBtnY) && ui->mouseY <= int(closeBtnY + closeBtnH);
+
+    SDL_Color closeBg = closeHovered ? SDL_Color{ 60, 100, 120, 255 } : SDL_Color{ 40, 70, 90, 255 };
+    for (int yy = int(closeBtnY); yy < int(closeBtnY + closeBtnH); ++yy)
+    {
+        m_renderer->DrawLine(closeBtnX, float(yy), closeBtnX + closeBtnW, float(yy), closeBg);
+    }
+    m_renderer->DrawRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH, closeHovered ? Colors::Cyan : Colors::White);
+    m_renderer->DrawText("Close", closeBtnX + 28.0f, closeBtnY + 8.0f, Colors::White);
+
+    if (ui && ((ui->leftClick && closeHovered) || ui->rightClick))
+    {
+        uiGameState->viewingDiscardedCards = false;
     }
 }

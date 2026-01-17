@@ -12,11 +12,13 @@ struct UIGameState
     std::array<std::vector<const sevenWD::Card*>, 2> pickedCards;
     bool viewingPlayerCity = false;
     int viewedPlayer = -1;
+    bool viewingDiscardedCards = false;  // NEW: toggle for discarded cards view
 
     void resetView()
     {
         viewingPlayerCity = false;
         viewedPlayer = -1;
+        viewingDiscardedCards = false;
     }
 };
 
@@ -33,7 +35,7 @@ public:
         float pyramidBaseY = 220.0f; // Y position of pyramid
 
         float militaryTrackX0 = 720.0f; // X position of military track start
-        float militaryTrackY = 40.0f;  // Y position of military track
+        float militaryTrackY = 30.0f;  // Y position of military track
 
         float scienceTokensX = 920.0f; // X position for science tokens
         float scienceTokensY = 130.0f; // Y position for science tokens
@@ -191,6 +193,7 @@ private:
     void drawSelectedCard(UIState* ui);
     void drawDestroyCardModal(UIState* ui);
     void drawReviveCardModal(UIState* ui);
+    void drawDiscardedCardsView(UIState* ui, UIGameState* uiGameState);  // NEW
     void drawPlayerCityButtons(UIState* ui, UIGameState* uiGameState);
     void drawPlayerCityView(UIState* ui, UIGameState* uiGameState);
     float drawPlayerCityCardGrid(const std::vector<const sevenWD::Card*>& cards, float startX, float startY, float maxWidth);
