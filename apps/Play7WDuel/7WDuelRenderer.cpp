@@ -1363,6 +1363,9 @@ void SevenWDuelRenderer::drawCardGraph(UIState* ui)
                                 // Clear double-click state but keep selection for visual feedback
                                 m_lastClickedNode = -1;
                                 m_lastClickTime = std::chrono::steady_clock::time_point::min();
+                                
+                                // Consume the click to prevent it from immediately selecting a card in the modal
+                                ui->leftClick = false;
                             }
                             else
                             {
@@ -2182,9 +2185,6 @@ void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
             ui->showDestroyCardModal = false;
             ui->pendingBuildWonderIndex = -1;
             ui->pendingPlayableCardIndex = -1;
-            ui->selectedWonderPlayer = -1;
-            ui->selectedWonderIndex = -1;
-            ui->selectedNode = -1;
         }
 
         x += cardW + spacing;
@@ -2196,7 +2196,7 @@ void SevenWDuelRenderer::drawDestroyCardModal(UIState* ui)
     const float cancelBtnX = modalX + (modalW - cancelBtnW) / 2.0f;
     const float cancelBtnY = modalY + modalH - 50.0f;
 
-    bool cancelHovered = ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
+    bool cancelHovered = ui && ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
                          ui->mouseY >= int(cancelBtnY) && ui->mouseY <= int(cancelBtnY + cancelBtnH);
 
     SDL_Color cancelBg = cancelHovered ? SDL_Color{ 120, 60, 60, 255 } : SDL_Color{ 80, 40, 40, 255 };
@@ -2349,6 +2349,7 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
         const sevenWD::Card& card = m_state.m_context->getCard(cardId);
         SDL_Texture* tex = GetCardImage(card);
 
+        // Fix: Use explicit bounds check with all four edges
         bool hovered = ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
                        ui->mouseY >= int(y) && ui->mouseY < int(y + cardH);
 
@@ -2364,8 +2365,8 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
         else
             m_renderer->DrawText(card.getName() ? card.getName() : "?", x, y, Colors::White);
 
-        // Handle click to select and build
-        if (ui->leftClick && hovered)
+        // Handle click to select and build - only if THIS card is hovered
+        if (ui->leftClick && hovered && ui->hoveredReviveCardId == cardId)
         {
             // Build Mausoleum wonder with this card as revival target
             sevenWD::Move mv;
@@ -2384,6 +2385,10 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
             ui->selectedWonderPlayer = -1;
             ui->selectedWonderIndex = -1;
             ui->selectedNode = -1;
+            
+            // Consume the click to prevent further processing
+            ui->leftClick = false;
+            break;  // Exit the loop after handling the click
         }
 
         cardIndex++;
@@ -2395,7 +2400,7 @@ void SevenWDuelRenderer::drawReviveCardModal(UIState* ui)
     const float cancelBtnX = modalX + (modalW - cancelBtnW) / 2.0f;
     const float cancelBtnY = modalY + modalH - 50.0f;
 
-    bool cancelHovered = ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
+    bool cancelHovered = ui && ui->mouseX >= int(cancelBtnX) && ui->mouseX <= int(cancelBtnX + cancelBtnW) &&
                          ui->mouseY >= int(cancelBtnY) && ui->mouseY <= int(cancelBtnY + cancelBtnH);
 
     SDL_Color cancelBg = cancelHovered ? SDL_Color{ 120, 60, 60, 255 } : SDL_Color{ 80, 40, 40, 255 };
@@ -2473,7 +2478,7 @@ void SevenWDuelRenderer::drawDiscardedCardsView(UIState* ui, UIGameState* uiGame
         // Calculate grid layout
         int cardsPerRow = std::min(9, int(revivableCardIds.size()));
         int numRows = (int(revivableCardIds.size()) + cardsPerRow - 1) / cardsPerRow;
-
+        
         float gridW = cardsPerRow * cardW + (cardsPerRow - 1) * spacing;
 
         float startX = panelX + (panelW - gridW) / 2.0f;
@@ -2491,9 +2496,9 @@ void SevenWDuelRenderer::drawDiscardedCardsView(UIState* ui, UIGameState* uiGame
             const sevenWD::Card& card = m_state.m_context->getCard(cardId);
             SDL_Texture* tex = GetCardImage(card);
 
-            // Check hover for visual feedback (but no selection action)
-            bool hovered = ui && ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
-                ui->mouseY >= int(y) && ui->mouseY < int(y + cardH);
+            // Fix: Use explicit bounds check with all four edges
+            bool hovered = ui->mouseX >= int(x) && ui->mouseX < int(x + cardW) &&
+                           ui->mouseY >= int(y) && ui->mouseY < int(y + cardH);
 
             if (hovered)
             {
