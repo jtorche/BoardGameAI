@@ -364,6 +364,9 @@ namespace sevenWD
 		else if (_additionalEffect != u8(-1) && pickedWonder == Wonders::Mausoleum)
 		{
 			const Card& revivedCard = m_context->getCard(_additionalEffect);
+			// Can strategy token work here ?
+			updateMilitary(revivedCard.getMilitary(), false);
+			
 			getCurrentPlayerCity().addCard(revivedCard, otherPlayer);
 		} 
 		else if (pickedWonder == Wonders::GreatLibrary)
