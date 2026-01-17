@@ -169,16 +169,17 @@ static sevenWD::AIInterface* createAIByName(const std::string& name, bool strong
                 }
                 pAI->m_numMoves = numMoves;
                 pAI->m_numSampling = numSimu;
-				pAI->m_useTemperature = strongPlayMode ? false : true;
-				pAI->m_useDirichletNoise = strongPlayMode ? false : true;
-				pAI->m_useBestAvgSampledScenario = strongPlayMode ? true : false;
 
                 if (parts.size() >= 5) {
-                    parseFloat(trim_copy(parts[4]), pAI->C);
+                    parseFloat(trim_copy(parts[4]), pAI->m_temperature);
                 }
                 if (parts.size() == 6) {
                     parseFloat(trim_copy(parts[5]), pAI->m_scienceBoost);
                 }
+
+                pAI->m_temperature = strongPlayMode ? 0.f : pAI->m_temperature;
+                pAI->m_useDirichletNoise = strongPlayMode ? false : true;
+                pAI->m_useBestAvgSampledScenario = strongPlayMode ? true : false;
 
                 return pAI;
             }

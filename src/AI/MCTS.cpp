@@ -64,6 +64,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	std::vector<u32> sampledVisits(_moves.size(), 0);
 	std::vector<float> scores(_moves.size(), 0);
 	std::mutex* pMutex = nullptr;
+	std::atomic_uint numUnusedMoveBudget = 0;
 
 	auto processRange = [&](u32 start, u32 end)
 	{
@@ -79,6 +80,10 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 				u32 depth = 0;
 				MTCS_Node* pSelectedNode = selection(pRoot, depth);
 				MTCS_Node* pExpandedNode = expansion(pSelectedNode, linAllocator);
+				if (pSelectedNode == pExpandedNode) {
+					numUnusedMoveBudget++; 
+				}
+
 				auto [reward, simPlayer] = playout(pExpandedNode, scratchMoves, pThreadContext);
 				DEBUG_ASSERT(simPlayer == pExpandedNode->m_playerTurn);
 				if (pExpandedNode->m_gameState.m_winType != WinType::None) {
@@ -111,6 +116,19 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	}
 	else {
 		processRange(0u, m_numSampling);
+	}
+	
+	// We may fit more samplings in the budget if some selections ended up not expanding any nodes
+	const u32 numExtraSamplings = (4 * numUnusedMoveBudget.load()) / (5 * m_numMoves);
+	if (numExtraSamplings > 0) {
+		if (m_threadPool) {
+			std::mutex mut;
+			pMutex = &mut;
+			m_threadPool->parallelize_loop(0u, numExtraSamplings, processRange, numExtraSamplings);
+		}
+		else {
+			processRange(0u, numExtraSamplings);
+		}
 	}
 
 	maxDepthAvg = maxDepthAvg / m_numSampling;
@@ -341,6 +359,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	float puctPriors[GameController::cMaxNumMoves] = { 0 };
 	u32 puctPriorsWeight[GameController::cMaxNumMoves] = { 0 };
 	std::mutex* pMutex = nullptr;
+	std::atomic_uint numUnusedMoveBudget = 0;
 
 	auto processRange = [&](u32 start, u32 end)
 	{
@@ -355,6 +374,12 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 				for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
 					u32 depth = 0;
 					MTCS_Node* pSelectedNode = selection(pRoot, depth, linAllocator, pThreadContext);
+					
+					// Track if selection didn't expand any new node (hit a terminal or already fully expanded)
+					if (pSelectedNode->m_gameState.m_winType != WinType::None) {
+						numUnusedMoveBudget++;
+					}
+					
 					auto [reward, simPlayer] = playout(pSelectedNode, scratchMoves, pThreadContext);
 					DEBUG_ASSERT(simPlayer == pSelectedNode->m_playerTurn);
 					if (pSelectedNode->m_gameState.m_winType != WinType::None) {
@@ -425,22 +450,92 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 		processRange(0u, m_numSampling);
 	}
 
-	maxDepthAvg = maxDepthAvg / m_numSampling;
+	// We may fit more samplings in the budget if some selections ended up not expanding any nodes
+	const u32 numExtraSamplings = (4 * numUnusedMoveBudget.load()) / (5 * m_numMoves);
+	if (numExtraSamplings > 0) {
+		if (m_threadPool) {
+			std::mutex mut;
+			pMutex = &mut;
+			m_threadPool->parallelize_loop(0u, numExtraSamplings, processRange, numExtraSamplings);
+		}
+		else {
+			processRange(0u, numExtraSamplings);
+		}
+	}
+
+	maxDepthAvg = maxDepthAvg / (m_numSampling + numExtraSamplings);
 
 	// Get context from game state
 	const sevenWD::GameContext* pContext = _game.m_gameState.m_context;
 
-	// select best move among all sampled visits
-	u32 bestIndex = 0;
-	u32 bestVisits = 0;
+	// Compute scores for each move
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
-		scores[i] /= (m_useBestAvgSampledScenario ? m_numSampling : sampledVisits[i]);
-		if (sampledVisits[i] > bestVisits) {
-			bestVisits = sampledVisits[i];
-			bestIndex = i;
+		scores[i] /= (m_useBestAvgSampledScenario ? (m_numSampling + numExtraSamplings) : std::max(1u, sampledVisits[i]));
+	}
+
+	// Select move based on temperature
+	u32 selectedIndex = u32(-1);
+
+	float temperature = m_temperature;
+	if (_game.m_gameState.getCurrentAge() == 1) {
+		temperature *= 0.5; // lower temperature in second age to favor stronger moves
+	} else if (_game.m_gameState.getCurrentAge() == 2) {
+		temperature = 0.f;
+	}
+	
+	if (temperature <= 0.0f) {
+		// Greedy selection: pick move with most visits
+		u32 bestVisits = 0;
+		for (u32 i = 0; i < sampledVisits.size(); ++i) {
+			if (sampledVisits[i] > bestVisits) {
+				bestVisits = sampledVisits[i];
+				selectedIndex = i;
+			}
+		}
+	}
+	else if (temperature >= 100.0f) {
+		// Very high temperature: uniform random selection
+		selectedIndex = m_rand() % (u32)_moves.size();
+	}
+	else {
+		// Temperature-based probabilistic selection
+		// P(a) = N(a)^(1/T) / sum(N(b)^(1/T))
+		std::vector<float> probs(_moves.size());
+		float sum = 0.0f;
+		const float invTemp = 1.0f / temperature;
+
+		for (u32 i = 0; i < sampledVisits.size(); ++i) {
+			// Use pow(visits, 1/temperature) for probability calculation
+			// Adding small epsilon to handle zero visits
+			probs[i] = std::pow(static_cast<float>(sampledVisits[i]) + cEpsilon, invTemp);
+			sum += probs[i];
+		}
+		
+		// Normalize probabilities
+		for (u32 i = 0; i < probs.size(); ++i) {
+			probs[i] /= std::max(sum, cEpsilon);
+		}
+
+		&probs;
+		
+		// Sample from the probability distribution
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		float r = dist(m_rand);
+		float cumulative = 0.0f;
+		
+		for (u32 i = 0; i < probs.size(); ++i) {
+			cumulative += probs[i];
+			if (r <= cumulative) {
+				selectedIndex = i;
+				break;
+			}
+		}
+		if (selectedIndex == u32(-1)) {
+			selectedIndex = (u32)_moves.size() - 1;
 		}
 	}
 
+	// Compute PUCT priors for training output
 	for (u32 i = 0; i < GameController::cMaxNumMoves; ++i) {
 		if (puctPriorsWeight[i] > 0) {
 			puctPriors[i] /= (float)puctPriorsWeight[i];
@@ -452,7 +547,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 		memcpy(pTC->m_puctPriors, puctPriors, sizeof(puctPriors));
 	}
 
-	return { _moves[bestIndex], scores[bestIndex] };
+	return { _moves[selectedIndex], scores[selectedIndex] };
 }
 
 void MCTS_Zero::computeNNInference(MTCS_Node* pNode, void* pContext) const

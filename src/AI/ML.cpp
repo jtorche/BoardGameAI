@@ -15,7 +15,7 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 	Move move;
 	do
 	{
-		if (prevPlayerTurn != u32(-1) && game.m_gameState.getNumTurnPlayed() > 0) {
+		if (prevPlayerTurn != u32(-1) && game.m_gameState.getCurrentAge() != u8(-1)) {
 			data[game.m_gameState.getCurrentAge()].push_back({ game.m_gameState });
 			AIs[prevPlayerTurn]->fillPUCTPriors(AIThreadContexts[prevPlayerTurn], data[game.m_gameState.getCurrentAge()].back().m_puctPriors);
 		}
@@ -405,11 +405,13 @@ std::pair<float, float> ML_Toolbox::evalMeanLoss(
 void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet, float alpha)
 {
 	// Optimizer (persistent across batches)
-	tiny_dnn::adam optimizer;
+	tiny_dnn::momentum optimizer;
 	optimizer.alpha = alpha;
 
 	BaseNN::TinyDNN_Net& net = pNet->getNetwork();
 
+	// bool _60percentReached = false;
+	// bool _90percentReached = false;
 	for (u32 i = 0; i < epoch; ++i) {
 		float avgLoss = 0.0f;
 		float avgAcc = 0.0f;
@@ -418,7 +420,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 		int batchId = 0;
 		int counter = 0;
 		for (const auto& batch : batches) {
-			net.fit<crossEntropy, tiny_dnn::adam>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
+			net.fit<crossEntropy>(optimizer, batch.data, batch.labels, batch.data.size(), 1);
 
 			if ((batchId + i) % 8 == 7) {
 				float loss = 0;
@@ -454,13 +456,19 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 		avgAcc /= std::max(1, counter);
 		avgAbsErr /= std::max(1, counter);
 
-		std::cout << std::setprecision(4)
-			<< "Epoch:" << i << "/" << epoch << " | ";
+		std::cout << std::setprecision(4) << "Epoch:" << i << "/" << epoch << " | ";
 
 		for (u32 j = 0; j < age; ++j)
 			std::cout << "                                ";
 
-		std::cout << "Loss:" << avgLoss << " | Acc: " << avgAcc<< " : " << avgAbsErr << std::endl;
+		std::cout << "Loss:" << avgLoss << " | Acc: " << avgAcc << " | Alpha:" << optimizer.alpha << std::endl;
+		// if (!_60percentReached && float(i) >= epoch * 0.6f) {
+		// 	optimizer.alpha *= 0.0f;
+		// 	_60percentReached = true;
+		// } else if (!_90percentReached && float(i) >= epoch * 0.9f) {
+		// 	optimizer.alpha *= 0.1f;
+		// 	_90percentReached = true;
+		// }
 	}
 }
 

@@ -51,11 +51,12 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Zero* activeAI = nullptr;
-    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer32_PUCT, "tl_32", true);
+    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer16_PUCT, "baseline", true);
 	if (pLoadedAI) {
 		activeAI = pLoadedAI;
         pLoadedAI->enableMT();
 		activeAI->m_useDirichletNoise = false;
+		activeAI->m_temperature = 0.0f;
     }
 
     if (!activeAI) {
@@ -246,8 +247,10 @@ int main(int argc, char** argv)
     std::vector<Slider*> allSliders;
     Slider sliderAINumSamples(1, 300, 50, "AI Samples");
     Slider sliderNumSimu(10000, 500000, 100000, "AI Num Simu");
+    Slider sliderTemperature(0, 200, 0, "AI Temperature");
 	allSliders.push_back(&sliderAINumSamples);
 	allSliders.push_back(&sliderNumSimu);
+    allSliders.push_back(&sliderTemperature);
 
     // Place sliders somewhere in UI (top-right under toggle). We'll set positions every frame before drawing.
     const int bx = 1600;
@@ -319,6 +322,7 @@ int main(int argc, char** argv)
                                     // Update AI parameters from sliders
 									activeAI->m_numSampling = sliderAINumSamples.value;
 									activeAI->m_numMoves = sliderNumSimu.value;
+                                    activeAI->m_temperature = (float)sliderTemperature.value / 100.f;
 
                                     // Launch AI computation in background to avoid blocking UI.
                                     // Make a copy of the current GameController for the AI to work on.

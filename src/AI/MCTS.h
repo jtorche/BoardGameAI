@@ -106,12 +106,13 @@ struct MCTS_Zero : BaseNetworkAI
 	thread_pool* m_threadPool = nullptr;
 	u32 m_numMoves = 1000;
 	u32 m_numSampling = 50;
-	float C = 2.0f;
+	float m_temperature = 0.5f;
 	float m_scienceBoost = 0.0f;
 	bool m_useNNHeuristic = true;
 	bool m_useDirichletNoise = true;
-	bool m_useTemperature = true;
 	bool m_useBestAvgSampledScenario = true;
+
+    float C = 2.0f;
 	static constexpr float cEpsilon = 1e-5f;
 
 	using BaseNetworkAI::BaseNetworkAI;
@@ -120,7 +121,7 @@ struct MCTS_Zero : BaseNetworkAI
 	void enableMT();
 
 	std::string getName() const override {
-		return std::string("MCTS_Zero") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling) + ((m_scienceBoost>0) ? "_sc" : "");
+		return std::string("MCTS_Zero") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling) + ((m_scienceBoost>0) ? "_sc" : "") + "_" + m_name;
 	}
 
 	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;

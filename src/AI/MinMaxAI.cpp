@@ -18,7 +18,7 @@ namespace sevenWD
 
     std::pair<Move, float> MinMaxAI::selectMove(const GameContext&, const GameController& _game, const std::vector<Move>& _moves, void* pThreadContext)
     {
-        std::vector<std::future<float>> asyncScores(_moves.size());
+        std::vector<float> scores(_moves.size());
         std::atomic<float> b = 1.0f;
 
         auto evalPosLambda = [&](const Move& _move)
@@ -43,25 +43,25 @@ namespace sevenWD
             return score;
         };
 
-        std::transform(_moves.begin(), _moves.end(), asyncScores.begin(),
-            [&](const Move& move) -> std::future<float>
-            {
-                if (m_monothread)
+        if (m_monothread) {
+            for (size_t i = 0; i < _moves.size(); ++i) {
+                scores[i] = evalPosLambda(_moves[i]);
+            }
+        }
+        else {
+            std::vector<std::future<float>> asyncScores(_moves.size());
+            std::transform(_moves.begin(), _moves.end(), asyncScores.begin(),
+                [&](const Move& move) -> std::future<float>
                 {
-                    std::promise<float> scorePromise;
-                    scorePromise.set_value(evalPosLambda(move));
-                    return scorePromise.get_future();
-                }
-                else
                     return s_threadPool.submit([&]() -> float { return evalPosLambda(move); });
-            });
+                });
 
-        std::vector<float> scores(asyncScores.size());
-        std::transform(asyncScores.begin(), asyncScores.end(), scores.begin(),
-            [&](std::future<float>& _score)
-            {
-                return _score.get();
-            });
+            std::transform(asyncScores.begin(), asyncScores.end(), scores.begin(),
+                [&](std::future<float>& _score)
+                {
+                    return _score.get();
+                });
+        }
 
         auto bestIt = std::max_element(scores.begin(), scores.end());
         u32 bestScoreIndex = (u32)std::distance(scores.begin(), bestIt);
