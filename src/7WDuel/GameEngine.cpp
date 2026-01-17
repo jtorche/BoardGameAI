@@ -360,14 +360,21 @@ namespace sevenWD
 			m_discardedCards.add(*m_context, destroyedCard);
 			otherPlayer.removeCard(destroyedCard);
 		}
-
 		else if (_additionalEffect != u8(-1) && pickedWonder == Wonders::Mausoleum)
 		{
 			const Card& revivedCard = m_context->getCard(_additionalEffect);
-			// Can strategy token work here ?
+			// Strategy token does NOT apply to Mausoleum revival (similar to wonders)
 			updateMilitary(revivedCard.getMilitary(), false);
 			
-			getCurrentPlayerCity().addCard(revivedCard, otherPlayer);
+			SpecialAction revivedAction = getCurrentPlayerCity().addCard(revivedCard, otherPlayer);
+			
+			// Check for military win from revived card
+			if (abs(m_military) >= 9)
+				return SpecialAction::MilitaryWin;
+			
+			// If reviving a science card triggered a special action, it takes priority
+			if (revivedAction == SpecialAction::ScienceWin || revivedAction == SpecialAction::TakeScienceToken)
+				return revivedAction;
 		} 
 		else if (pickedWonder == Wonders::GreatLibrary)
 		{
