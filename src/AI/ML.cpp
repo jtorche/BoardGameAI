@@ -608,6 +608,8 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 		return std::make_shared<TwoLayersPUCT<16>>(type);
 	case NetworkType::Net_TwoLayer32_PUCT:
 		return std::make_shared<TwoLayersPUCT<32>>(type);
+	case NetworkType::Net_ThreeLayer32_PUCT:
+		return std::make_shared<ThreeLayersPUCT<32>>(type);
 	default:
 		return nullptr;
 	}

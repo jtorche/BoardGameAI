@@ -299,6 +299,190 @@ struct TwoLayersPUCT : BaseNN
 	}
 };
 
+template<u32 LayerSize>
+struct ThreeLayersPUCT : BaseNN
+{
+	ThreeLayersPUCT(NetworkType netType)
+		: BaseNN(netType, true)
+	{
+		u32 tensorSize = sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize;
+
+		m_net << tiny_dnn::batch_normalization_layer(1, tensorSize)
+			<< tiny_dnn::fully_connected_layer(tensorSize, LayerSize)
+			<< tiny_dnn::relu_layer()
+			<< tiny_dnn::fully_connected_layer(LayerSize, LayerSize)
+			<< tiny_dnn::relu_layer()
+			<< tiny_dnn::fully_connected_layer(LayerSize, 1 + sevenWD::GameController::cMaxNumMoves)
+			<< tiny_dnn::sigmoid_layer();
+
+		m_bnMean = nullptr;
+		m_bnVariance = nullptr;
+		m_bnEpsilon = 0.0f;
+
+		m_layer1Weights = nullptr;
+		m_layer1Biases = nullptr;
+		m_layer2Weights = nullptr;
+		m_layer2Biases = nullptr;
+		m_layer3Weights = nullptr;
+		m_layer3Biases = nullptr;
+		m_inputSize = tensorSize;
+	}
+
+	// Batch-norm (inference): y = (x - mean) / sqrt(variance + eps)
+	// Note: stored per-channel; here channels == tensorSize and spatial == 1.
+	float* m_bnMean = nullptr;     // size: inputSize
+	float* m_bnVariance = nullptr; // size: inputSize
+	float  m_bnEpsilon = 0.0f;
+
+	// First FC: tensorSize -> LayerSize
+	float* m_layer1Weights = nullptr; // size: LayerSize * inputSize
+	float* m_layer1Biases = nullptr;  // size: LayerSize
+
+	// Second FC: LayerSize -> LayerSize
+	float* m_layer2Weights = nullptr; // size: LayerSize * LayerSize
+	float* m_layer2Biases = nullptr;  // size: LayerSize
+
+	// Third FC: LayerSize -> (1 + cMaxNumMoves) [value + policy]
+	float* m_layer3Weights = nullptr; // size: (1 + cMaxNumMoves) * LayerSize
+	float* m_layer3Biases = nullptr;  // size: 1 + cMaxNumMoves
+
+	u32 m_inputSize = 0;
+
+	void prepareAfterLoad() override
+	{
+		using bn_layer = tiny_dnn::batch_normalization_layer;
+		using fc_layer = tiny_dnn::fully_connected_layer;
+
+		// Layout:
+		// [0] batch_norm
+		// [1] fully_connected(tensorSize -> LayerSize)
+		// [2] relu
+		// [3] fully_connected(LayerSize -> LayerSize)
+		// [4] relu
+		// [5] fully_connected(LayerSize -> 1 + cMaxNumMoves)
+		// [6] sigmoid
+
+		// Layer 0: batch-norm
+		if (m_net.layer_size() > 0) {
+			auto* l0 = dynamic_cast<bn_layer*>(m_net[0]);
+			if (l0) {
+				auto& mean = l0->mean_;
+				auto& variance = l0->variance_;
+
+				m_bnMean = mean.empty() ? nullptr : mean.data();
+				m_bnVariance = variance.empty() ? nullptr : variance.data();
+				m_bnEpsilon = static_cast<float>(l0->epsilon());
+			}
+		}
+
+		// Layer 1: first fully-connected
+		if (m_net.layer_size() > 1) {
+			auto* l1 = dynamic_cast<fc_layer*>(m_net[1]);
+			if (l1) {
+				auto& w1_ref = *l1->weights()[0];
+				auto& b1_ref = *l1->weights()[1];
+
+				tiny_dnn::vec_t& w1 = w1_ref;
+				tiny_dnn::vec_t& b1 = b1_ref;
+
+				m_layer1Weights = w1.empty() ? nullptr : w1.data();
+				m_layer1Biases = b1.empty() ? nullptr : b1.data();
+
+				m_inputSize = static_cast<u32>(l1->in_size());
+			}
+		}
+
+		// Layer 3: second fully-connected
+		if (m_net.layer_size() > 3) {
+			auto* l3 = dynamic_cast<fc_layer*>(m_net[3]);
+			if (l3) {
+				auto& w3_ref = *l3->weights()[0];
+				auto& b3_ref = *l3->weights()[1];
+
+				tiny_dnn::vec_t& w3 = w3_ref;
+				tiny_dnn::vec_t& b3 = b3_ref;
+
+				m_layer2Weights = w3.empty() ? nullptr : w3.data();
+				m_layer2Biases = b3.empty() ? nullptr : b3.data();
+			}
+		}
+
+		// Layer 5: third fully-connected
+		if (m_net.layer_size() > 5) {
+			auto* l5 = dynamic_cast<fc_layer*>(m_net[5]);
+			if (l5) {
+				auto& w5_ref = *l5->weights()[0];
+				auto& b5_ref = *l5->weights()[1];
+
+				tiny_dnn::vec_t& w5 = w5_ref;
+				tiny_dnn::vec_t& b5 = b5_ref;
+
+				m_layer3Weights = w5.empty() ? nullptr : w5.data();
+				m_layer3Biases = b5.empty() ? nullptr : b5.data();
+			}
+		}
+	}
+
+	// Manual, allocation-light forward pass
+	tiny_dnn::vec_t forward(const tiny_dnn::vec_t& x, void* pThreadContext, u32 netAge) override
+	{
+		if (!m_bnMean || !m_bnVariance || 
+			!m_layer1Weights || !m_layer1Biases ||
+			!m_layer2Weights || !m_layer2Biases ||
+			!m_layer3Weights || !m_layer3Biases) {
+			return BaseNN::forward(x, pThreadContext, netAge);
+		}
+
+		DEBUG_ASSERT(x.size() == m_inputSize);
+
+		constexpr u32 kOutSize = 1u + sevenWD::GameController::cMaxNumMoves;
+
+		// BN output (spatial=1, channels=inputSize): bn[i] = (x[i] - mean[i]) / sqrt(var[i] + eps)
+		float bnOut[sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize];
+
+		DEBUG_ASSERT(m_inputSize <= (sizeof(bnOut) / sizeof(bnOut[0])));
+
+		for (u32 i = 0; i < m_inputSize; ++i) {
+			const float denom = std::sqrt(m_bnVariance[i] + m_bnEpsilon);
+			bnOut[i] = (x[i] - m_bnMean[i]) / denom;
+		}
+
+		// First FC + ReLU: hidden1 = relu(W1 * bnOut + b1)
+		float hidden1[LayerSize];
+
+		for (u32 o = 0; o < LayerSize; ++o) {
+			float acc = m_layer1Biases[o];
+			for (u32 i = 0; i < m_inputSize; ++i) {
+				acc += m_layer1Weights[i * LayerSize + o] * bnOut[i];
+			}
+			hidden1[o] = acc > 0.0f ? acc : 0.0f;
+		}
+
+		// Second FC + ReLU: hidden2 = relu(W2 * hidden1 + b2)
+		float hidden2[LayerSize];
+
+		for (u32 o = 0; o < LayerSize; ++o) {
+			float acc = m_layer2Biases[o];
+			for (u32 i = 0; i < LayerSize; ++i) {
+				acc += m_layer2Weights[i * LayerSize + o] * hidden1[i];
+			}
+			hidden2[o] = acc > 0.0f ? acc : 0.0f;
+		}
+
+		// Third FC + sigmoid: out[o] = sigmoid(W3 * hidden2 + b3)
+		tiny_dnn::vec_t result(kOutSize);
+		for (u32 o = 0; o < kOutSize; ++o) {
+			float acc = m_layer3Biases[o];
+			for (u32 i = 0; i < LayerSize; ++i) {
+				acc += m_layer3Weights[i * kOutSize + o] * hidden2[i];
+			}
+			result[o] = 1.0f / (1.0f + std::exp(-acc));
+		}
+
+		return result;
+	}
+};
+
 #else
 
 TODO

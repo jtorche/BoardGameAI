@@ -25,6 +25,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     else if (netTypeStr == "TwoLayers8_PUCT") return NetworkType::Net_TwoLayer8_PUCT;
     else if (netTypeStr == "TwoLayers16_PUCT") return NetworkType::Net_TwoLayer16_PUCT;
     else if (netTypeStr == "TwoLayers32_PUCT") return NetworkType::Net_TwoLayer32_PUCT;
+    else if (netTypeStr == "ThreeLayers32_PUCT") return NetworkType::Net_ThreeLayer32_PUCT;
     return NetworkType::Net_BaseLine;
 }
 
@@ -179,7 +180,7 @@ static sevenWD::AIInterface* createAIByName(const std::string& name, bool strong
 
                 pAI->m_temperature = strongPlayMode ? 0.f : pAI->m_temperature;
                 pAI->m_useDirichletNoise = strongPlayMode ? false : true;
-                pAI->m_useBestAvgSampledScenario = strongPlayMode ? true : false;
+                pAI->m_useBestAvgSampledScenario = strongPlayMode ? (numSimu > 32) : false;
 
                 return pAI;
             }
@@ -211,7 +212,7 @@ int main(int argc, char** argv)
     try {
         cxxopts::Options options("Play7WDuel", "Console tool: generate dataset or train network");
         options.add_options()
-            ("mode", "Mode: generate or train or stats", cxxopts::value<std::string>()->default_value("generate"))
+            ("mode", "Mode: generate or train or stats or merge", cxxopts::value<std::string>()->default_value("generate"))
             ("size", "Dataset size (number of games)", cxxopts::value<uint32_t>()->default_value("100"))
             // allow multiple --ai entries, default is two AIs (RandAI and MonteCarloAI)
             ("ai", "AI to include in generation (repeatable).\nList: RandAI MonteCarloAI(numSimu) MCTS_Simple(numSimu;depth;modelName;netName) MCTS_Deterministic(numMove, numSimu)",
@@ -332,7 +333,7 @@ int main(int argc, char** argv)
             };
 
 			NetworkType netType = parseNetType(netTypeStr);
-			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_TwoLayer32_PUCT);
+			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_ThreeLayer32_PUCT);
             // Load datasets (3 ages) from Dataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;
@@ -403,6 +404,37 @@ int main(int argc, char** argv)
             }
 
             return 0;
+        }
+        else if (mode == "merge") {
+            if (inPrefix.empty()) {
+                std::cout << "For merge you must provide --in <datasetPrefix1,datasetPrefix2,...> (comma-separated list of dataset prefixes)." << std::endl;
+                return 1;
+            }
+            std::vector<std::string> prefixes = StringUtil::split_char(inPrefix, ',');
+            Tournament tournament;
+            ML_Toolbox::Dataset mergedDatasets[3];
+            for (const auto& prefix : prefixes) {
+                Tournament t;
+                t.deserializeDataset(prefix);
+                ML_Toolbox::Dataset dataset[3];
+                t.fillDataset(dataset);
+                for (u32 age = 0; age < 3; ++age) {
+                    mergedDatasets[age] += dataset[age];
+                }
+            }
+            // Serialize merged datasets
+            for (u32 age = 0; age < 3; ++age) {
+                std::stringstream ss;
+                ss << "Dataset/" << outPrefix << "_dataset_age" << age << ".bin";
+                std::string path = ss.str();
+                bool ok = mergedDatasets[age].saveToFile(path);
+                if (!ok) {
+                    std::cout << "Failed to save merged dataset for age " << age << " to " << path << std::endl;
+                    return 1;
+                }
+                std::cout << "Merged dataset for age " << age << " saved to " << path << " (" << mergedDatasets[age].m_data.size() << " points)" << std::endl;
+            }
+			return 0;
         }
         else {
             std::cout << "Unknown mode: " << mode << ". Use 'generate' or 'train'." << std::endl;
