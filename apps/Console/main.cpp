@@ -26,6 +26,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     else if (netTypeStr == "TwoLayers16_PUCT") return NetworkType::Net_TwoLayer16_PUCT;
     else if (netTypeStr == "TwoLayers32_PUCT") return NetworkType::Net_TwoLayer32_PUCT;
     else if (netTypeStr == "ThreeLayers32_PUCT") return NetworkType::Net_ThreeLayer32_PUCT;
+    else if (netTypeStr == "FourLayers32_PUCT") return NetworkType::Net_FourLayer32_PUCT;
     return NetworkType::Net_BaseLine;
 }
 
@@ -180,7 +181,7 @@ static sevenWD::AIInterface* createAIByName(const std::string& name, bool strong
 
                 pAI->m_temperature = strongPlayMode ? 0.f : pAI->m_temperature;
                 pAI->m_useDirichletNoise = strongPlayMode ? false : true;
-                pAI->m_useBestAvgSampledScenario = strongPlayMode ? (numSimu > 32) : false;
+                pAI->m_useBestAvgSampledScenario = numSimu >= 32;
 
                 return pAI;
             }
@@ -333,7 +334,7 @@ int main(int argc, char** argv)
             };
 
 			NetworkType netType = parseNetType(netTypeStr);
-			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_ThreeLayer32_PUCT);
+			bool isPUCT = (netType >= NetworkType::Net_TwoLayer4_PUCT && netType <= NetworkType::Net_FourLayer32_PUCT);
             // Load datasets (3 ages) from Dataset/<inPrefix>dataset_ageX.bin
             if (inPrefix.empty()) {
                 std::cout << "For training you must provide --in <datasetPrefix> (prefix used when dataset was serialized)." << std::endl;

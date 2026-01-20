@@ -51,7 +51,7 @@ int main(int argc, char** argv)
     // Prepare AI 
     // ---------------
     MCTS_Zero* activeAI = nullptr;
-    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_TwoLayer16_PUCT, "baseline", true);
+    auto[pLoadedAI, _] = ML_Toolbox::loadAIFromFile<MCTS_Zero>(NetworkType::Net_ThreeLayer32_PUCT, "zeroSRLMerged", true);
 	if (pLoadedAI) {
 		activeAI = pLoadedAI;
         pLoadedAI->enableMT();

@@ -17,6 +17,7 @@ enum class NetworkType {
 	Net_TwoLayer16_PUCT,
 	Net_TwoLayer32_PUCT,
 	Net_ThreeLayer32_PUCT,
+	Net_FourLayer32_PUCT,
 };
 
 struct BaseNN 
@@ -36,6 +37,7 @@ struct BaseNN
 		case NetworkType::Net_TwoLayer16_PUCT: return "TwoLayers16_PUCT";
 		case NetworkType::Net_TwoLayer32_PUCT: return "TwoLayers32_PUCT";
 		case NetworkType::Net_ThreeLayer32_PUCT: return "ThreeLayers32_PUCT";
+		case NetworkType::Net_FourLayer32_PUCT: return "FourLayers32_PUCT";
 		default: return "UnknownNet";
 		}
 	}
