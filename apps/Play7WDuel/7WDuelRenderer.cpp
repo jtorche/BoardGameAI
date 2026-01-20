@@ -572,14 +572,15 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
     const float innerX = panelX + 24.0f;
     const float innerWidth = panelW - 48.0f;
     const float contentStartY = panelY + 60.0f;
-    const float contentAvailableH = panelH - (contentStartY - panelY) - 60.0f; // leave bottom margin
+    const float contentAvailableH = panelH - (contentStartY - panelY) - 40.0f; // reduced bottom margin
 
-    // Presentation constants (match previous values)
-    const float sectionTitleH = 28.0f;
-    const float sectionSpacingAfter = 20.0f;
-    const float defaultCardW = 88.0f;
-    const float minCardW = 60.0f; // allow some scaling if needed
-    const float columnGap = 24.0f;
+    // Presentation constants - reduced spacing for better fit
+    const float sectionTitleH = 24.0f;
+    const float sectionSpacingAfter = 12.0f;
+    const float defaultCardW = 72.0f;  // reduced from 88
+    const float minCardW = 50.0f;      // reduced from 60
+    const float columnGap = 20.0f;     // reduced from 24
+    const float wonderScale = 1.2f;    // reduced from 1.6f - wonders don't need to be huge
 
     // Build filtered lists per type preserving 'order'
     struct TypeBlock { sevenWD::CardType type; std::vector<const sevenWD::Card*> cards; };
@@ -643,13 +644,13 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
         yRef = yRef + std::max(0, rows) * rowHeight - spacing + sectionSpacingAfter;
     };
 
-    // Quick check: single-column layout with per-block card widths (wonders larger)
+    // Quick check: single-column layout with per-block card widths (wonders slightly larger)
     float totalSingle = 0.0f;
     for (const TypeBlock& tb : blocks)
     {
         float blockCardW = defaultCardW;
         if (tb.type == sevenWD::CardType::Wonder)
-            blockCardW = std::max(defaultCardW, m_layout.wonderW * 1.6f); // larger for wonders here
+            blockCardW = std::max(defaultCardW, m_layout.wonderW * wonderScale);
         totalSingle += calcBlockHeight(tb.cards, innerWidth, blockCardW);
     }
 
@@ -662,10 +663,10 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
             const char* typeName = cardTypeToString(tb.type);
             m_renderer->DrawText(typeName ? typeName : "Cards", innerX, y, Colors::Cyan);
 
-            // pick block-specific card width (wonders larger)
+            // pick block-specific card width (wonders slightly larger)
             float cardWForBlock = defaultCardW;
             if (tb.type == sevenWD::CardType::Wonder)
-                cardWForBlock = std::max(defaultCardW, m_layout.wonderW * 1.6f);
+                cardWForBlock = std::max(defaultCardW, m_layout.wonderW * wonderScale);
 
             drawBlock(tb.cards, innerX, y, innerWidth, cardWForBlock);
 
@@ -680,7 +681,7 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
     // Start with default cardW and attempt to fit by scaling down if needed
     float cardW = defaultCardW;
     bool fits = false;
-    for (float scale = 1.0f; scale >= 0.65f; scale -= 0.05f)
+    for (float scale = 1.0f; scale >= 0.5f; scale -= 0.05f)  // allow scaling down to 50%
     {
         cardW = defaultCardW * scale;
         // compute block heights when rendered in one column of width colWidth
@@ -690,7 +691,7 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
         {
             float blockCardW = cardW;
             if (blocks[i].type == sevenWD::CardType::Wonder)
-                blockCardW = std::max(cardW, m_layout.wonderW * 1.6f);
+                blockCardW = std::max(cardW, m_layout.wonderW * wonderScale * scale);  // scale wonders too
             infos.push_back({ i, calcBlockHeight(blocks[i].cards, colWidth, blockCardW) });
         }
 
@@ -749,7 +750,7 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
 
                 float cardWUsed = cardW;
                 if (tb.type == sevenWD::CardType::Wonder)
-                    cardWUsed = std::max(cardW, m_layout.wonderW * 1.6f);
+                    cardWUsed = std::max(cardW, m_layout.wonderW * wonderScale * scale);
 
                 drawBlock(tb.cards, leftX, yLeft, colWidth, cardWUsed);
             }
@@ -762,7 +763,7 @@ void SevenWDuelRenderer::drawPlayerCityView(UIState* /*ui*/, UIGameState* uiGame
 
                 float cardWUsed = cardW;
                 if (tb.type == sevenWD::CardType::Wonder)
-                    cardWUsed = std::max(cardW, m_layout.wonderW * 1.6f);
+                    cardWUsed = std::max(cardW, m_layout.wonderW * wonderScale * scale);
 
                 drawBlock(tb.cards, rightX, yRight, colWidth, cardWUsed);
             }
