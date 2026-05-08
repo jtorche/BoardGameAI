@@ -13,24 +13,24 @@ struct MCTS_Simple : BaseNetworkAI
 		return "MCTS_Simple_" + m_name + "_sim" + std::to_string(m_numSimu) + "_d" + std::to_string(m_depth);
 	}
 
-	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;
+	std::pair<bg::Move, float> selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext) override;
 };
 
 struct MTCS_Node {
 
-	MTCS_Node(MTCS_Node* pParent, sevenWD::Move moveFromParent, const sevenWD::GameController& _gamestate)
+	MTCS_Node(MTCS_Node* pParent, bg::Move moveFromParent, const bg::GameController& _gamestate)
 		: m_pParent(pParent)
 		, m_move_from_parent(moveFromParent)
 		, m_gameState(_gamestate)
-		, m_playerTurn((u8)_gamestate.m_gameState.getCurrentPlayerTurn())
+		, m_playerTurn((u8)_gamestate.getCurrentPlayerTurn())
 	{}
 
 	MTCS_Node* m_pParent = nullptr;
-	sevenWD::Move m_move_from_parent{};
-	sevenWD::GameController m_gameState;
+	bg::Move m_move_from_parent{};
+	bg::GameController m_gameState;
 
-	std::array<sevenWD::Move, 24> m_moveStorage;
-	sevenWD::Move* m_pMoves = m_moveStorage.data();
+	std::array<bg::Move, 24> m_moveStorage;
+	bg::Move* m_pMoves = m_moveStorage.data();
 	
 	std::array<MTCS_Node*, 24> m_childrenStorage;
 	MTCS_Node** m_children = m_childrenStorage.data();
@@ -42,7 +42,7 @@ struct MTCS_Node {
 	float m_nnHeuristic = 0.0f;
 	u32 m_visits = 0;
 	float m_totalRewards = 0;
-	float m_puctPriors[sevenWD::GameController::cMaxNumMoves] = { 0.0f };
+	float m_puctPriors[bg::GameController::cMaxNumMoves] = { 0.0f };
 
 	void cleanup() {
 		if (m_pMoves != m_moveStorage.data()) {
@@ -91,12 +91,12 @@ struct MCTS_Deterministic : BaseNetworkAI
 		}
 	}
 
-	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;
+	std::pair<bg::Move, float> selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext) override;
 
-	void initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator);
+	void initRoot(MTCS_Node* pNode, const bg::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator);
 	MTCS_Node* selection(MTCS_Node* pNode, u32& depth);
 	MTCS_Node* expansion(MTCS_Node* pNode, core::LinearAllocator& linAllocator);
-	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext);
+	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<bg::Move>& scratchMoves, void* pThreadContext);
 	void backPropagate(MTCS_Node* pNode, float reward);
 };
 
@@ -124,9 +124,9 @@ struct MCTS_Zero : BaseNetworkAI
 		return std::string("MCTS_Zero") + "_m" + std::to_string(m_numMoves) + "_s" + std::to_string(m_numSampling) + ((m_scienceBoost>0) ? "_sc" : "") + "_" + m_name;
 	}
 
-	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override;
+	std::pair<bg::Move, float> selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext) override;
 
-	void fillPUCTPriors(void* pContext, float(&puctPriors)[sevenWD::GameController::cMaxNumMoves]) override {
+	void fillPUCTPriors(void* pContext, float(&puctPriors)[bg::GameController::cMaxNumMoves]) override {
 		ThreadContext* pThreadContext = (ThreadContext*)pContext;
 		DEBUG_ASSERT(pThreadContext == nullptr || pThreadContext->m_pThis == this);
 
@@ -140,10 +140,10 @@ struct MCTS_Zero : BaseNetworkAI
 
 	bool needPUCTPriors() const override { return true; }
 
-	void initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const sevenWD::Move moves[], u32 numMoves) const;
+	void initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const bg::Move moves[], u32 numMoves) const;
 	void computeNNInference(MTCS_Node* pNode, void* pThreadContext) const;
-	void initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext);
+	void initRoot(MTCS_Node* pNode, const bg::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext);
 	MTCS_Node* selection(MTCS_Node* pNode, u32& depth, core::LinearAllocator& linAllocator, void* pThreadContext);
-	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext);
+	std::pair<float, u32> playout(MTCS_Node* pNode, std::vector<bg::Move>& scratchMoves, void* pThreadContext);
 	void backPropagate(MTCS_Node* pNode, float reward);
 };

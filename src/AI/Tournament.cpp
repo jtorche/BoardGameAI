@@ -6,7 +6,7 @@ Tournament::Tournament()
 
 }
 
-void Tournament::addAI(sevenWD::AIInterface* pAI)
+void Tournament::addAI(AIInterface* pAI)
 { 
 	std::cout << "Add AI : " << pAI->getName() << std::endl;
 	m_AIs.push_back(pAI); 
@@ -15,12 +15,12 @@ void Tournament::addAI(sevenWD::AIInterface* pAI)
 	m_winTypes.emplace_back(); 
 }
 
-void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay, u32 numThreads)
+void Tournament::generateDataset(const bg::GameContext& context, u32 numGameToPlay, u32 numThreads)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	m_numGamePlayed = 0;
-	std::vector<std::array<ML_Toolbox::Dataset, 3>> perThreadDataset(numThreads); // 16 threads
+	std::vector<std::array<ML_Toolbox::Dataset, bg::cNumNetworks>> perThreadDataset(numThreads); // 16 threads
 
 	std::vector<std::pair<u32, u32>> aiMatches;
 	for (u32 i = 0; i < m_AIs.size(); ++i) {
@@ -61,22 +61,22 @@ void Tournament::generateDataset(const sevenWD::GameContext& context, u32 numGam
 	});
 
 	for (const auto& dataset : perThreadDataset) {
-		m_dataset[0] += dataset[0];
-		m_dataset[1] += dataset[1];
-		m_dataset[2] += dataset[2];
+		for (u32 i = 0; i < bg::cNumNetworks; ++i) {
+			m_dataset[i] += dataset[i];
+		}
 	}
 }
 
-void Tournament::generateDatasetFromAI(const sevenWD::GameContext& context, sevenWD::AIInterface* pAI, u32 datasetSize)
+void Tournament::generateDatasetFromAI(const bg::GameContext& context, AIInterface* pAI, u32 datasetSize)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	if (pAI) {
 		addAI(pAI);
 	}
 
 	m_numGameInDataset = (u32)m_dataset[0].m_data.size();
-	std::vector<std::array<ML_Toolbox::Dataset, 3>> perThreadDataset(16); // 16 threads
+	std::vector<std::array<ML_Toolbox::Dataset, bg::cNumNetworks>> perThreadDataset(16); // 16 threads
 
 	std::atomic_uint printCounter = 0;
 
@@ -117,10 +117,10 @@ void Tournament::generateDatasetFromAI(const sevenWD::GameContext& context, seve
 	}
 }
 
-void Tournament::playOneGame(const sevenWD::GameContext& context, u32 i, u32 j)
+void Tournament::playOneGame(const bg::GameContext& context, u32 i, u32 j)
 {
-	using namespace sevenWD;
-	std::array<ML_Toolbox::Dataset, 3> db;
+	using namespace bg;
+	std::array<ML_Toolbox::Dataset, bg::cNumNetworks> db;
 	playOneGame(context, db, i, j, nullptr, nullptr);
 
 	m_dataset[0] += db[0];
@@ -128,15 +128,15 @@ void Tournament::playOneGame(const sevenWD::GameContext& context, u32 i, u32 j)
 	m_dataset[2] += db[2];
 }
 
-void Tournament::playOneGame(const sevenWD::GameContext& context, std::array<ML_Toolbox::Dataset, 3>& threadSafeDataset, u32 i, u32 j, void* pAIContextI, void* pAIContextJ)
+void Tournament::playOneGame(const bg::GameContext& context, std::array<ML_Toolbox::Dataset, bg::cNumNetworks>& threadSafeDataset, u32 i, u32 j, void* pAIContextI, void* pAIContextJ)
 {
-	using namespace sevenWD;
+	using namespace bg;
 	AIInterface* AIs[2] = { m_AIs[i], m_AIs[j] };
 	void* AIThreadContexts[2] = { pAIContextI, pAIContextJ };
 	u32 aiIndex[2] = { i, j };
 
 	WinType winType;
-	std::vector<ML_Toolbox::Dataset::Point> states[3];
+	std::vector<ML_Toolbox::Dataset::Point> states[bg::cNumNetworks];
 	double thinkingTime[2];
 	u32 winner = ML_Toolbox::generateOneGameDatasSet(context, AIs, AIThreadContexts, states, winType, thinkingTime);
 
@@ -151,7 +151,7 @@ void Tournament::playOneGame(const sevenWD::GameContext& context, std::array<ML_
 	m_numGamePlayed++;
 	m_statsMutex.unlock();
 
-	for (u32 age = 0; age < 3; ++age) {
+	for (u32 age = 0; age < bg::cNumNetworks; ++age) {
 		std::vector<u32> turns(states[age].size());
 		for (size_t t = 0; t < turns.size(); ++t)
 			turns[t] = (u32)t;
@@ -191,15 +191,15 @@ void Tournament::removeWorstAI(u32 amountOfAIsToKeep)
 	}
 }
 
-void Tournament::fillDataset(ML_Toolbox::Dataset(&dataset)[3]) const
+void Tournament::fillDataset(ML_Toolbox::Dataset(&dataset)[bg::cNumNetworks]) const
 {
-	for (u32 i = 0; i < 3; ++i) 
+	for (u32 i = 0; i < bg::cNumNetworks; ++i)
 		dataset[i] += m_dataset[i];
 }
 
 void Tournament::resetTournament(float percentageOfGamesToKeep)
 {
-	for (u32 i = 0; i < 3; ++i) {
+	for (u32 i = 0; i < bg::cNumNetworks; ++i) {
 		m_dataset[i].m_data.resize(size_t(((double)m_dataset[i].m_data.size()) * percentageOfGamesToKeep));
 	}
 
@@ -229,7 +229,7 @@ void Tournament::serializeDataset(const std::string& filenamePrefix) const
 	using namespace std::filesystem;
 	namespace fs = std::filesystem;
 
-	const std::string outDir = "Dataset";
+	const std::string outDir = std::string(bg::s_bgPrefix) + "_Dataset";
 	std::error_code ec;
 	fs::create_directories(outDir, ec);
 	if (ec) {
@@ -237,7 +237,7 @@ void Tournament::serializeDataset(const std::string& filenamePrefix) const
 		return;
 	}
 
-	for (u32 age = 0; age < 3; ++age) {
+	for (u32 age = 0; age < bg::cNumNetworks; ++age) {
 		std::stringstream ss;
 		ss << outDir << "/" << filenamePrefix << "_dataset_age" << age << ".bin";
 		std::string path = ss.str();
@@ -259,8 +259,8 @@ void Tournament::deserializeDataset(const std::string& filenamePrefix) const
 	// method is const in header; cast away const to update internal datasets
 	Tournament* self = const_cast<Tournament*>(this);
 
-	const std::string inDir = "Dataset";
-	for (u32 age = 0; age < 3; ++age) {
+	const std::string inDir = std::string(bg::s_bgPrefix) + "Dataset";
+	for (u32 age = 0; age < bg::cNumNetworks; ++age) {
 		std::stringstream ss;
 		ss << inDir << "/" << filenamePrefix << "_dataset_age" << age << ".bin";
 		std::string path = ss.str();
@@ -271,7 +271,7 @@ void Tournament::deserializeDataset(const std::string& filenamePrefix) const
 		}
 
 		// GameContext used for deserialization; card tables are deterministic so any seed is fine.
-		sevenWD::GameContext context(42);
+		bg::GameContext context(42);
 
 		bool ok = self->m_dataset[age].loadFromFile(context, path);
 		if (!ok) {

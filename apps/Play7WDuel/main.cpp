@@ -102,6 +102,9 @@ int main(int argc, char** argv)
     // Toggle: when true only player 1 may interact with mouse; player 2 moves must be triggered by space (AI).
     bool onlyPlayer1Mouse = false;
 
+    // Toggle: when true only player 2 may interact with mouse; player 1 moves must be triggered by space (AI).
+    bool onlyPlayer2Mouse = false;
+
     // Help panel toggle
     bool showHelpPanel = false;
 
@@ -260,7 +263,7 @@ int main(int argc, char** argv)
 
     // Help button position (below the toggle button, right side)
     const int helpBtnX = 1600 + 320 - 40; // Align with right edge of toggle button
-    const int helpBtnY = 80; // Below the AI score text area
+    const int helpBtnY = 100; // Below the AI score text area
     const int helpBtnW = 40;
     const int helpBtnH = 40;
 
@@ -296,9 +299,15 @@ int main(int argc, char** argv)
                 {
                     // When "Only Player1 Mouse" is enabled, allow the space-bar AI action
                     // only when it's player 2's turn. Otherwise space triggers AI for any player.
+                    // When "Only Player2 Mouse" is enabled, allow the space-bar AI action
+                    // only when it's player 1's turn.
                     if (onlyPlayer1Mouse && gameController.m_gameState.getCurrentPlayerTurn() != 1)
                     {
                         std::cout << "Space (AI) is disabled for player 1 when Only Player1 Mouse is ON. Press space when it's player 2's turn.\n";
+                    }
+                    else if (onlyPlayer2Mouse && gameController.m_gameState.getCurrentPlayerTurn() != 0)
+                    {
+                        std::cout << "Space (AI) is disabled for player 2 when Only Player2 Mouse is ON. Press space when it's player 1's turn.\n";
                     }
                     else
                     {
@@ -501,16 +510,6 @@ int main(int argc, char** argv)
         std::string label = std::string("Only Player1 Mouse: ") + (onlyPlayer1Mouse ? "ON" : "OFF");
         renderer.DrawText(label, float(bx + 10), float(by + 8), SevenWDuelRenderer::Colors::White);
 
-        // Draw last AI score (if available) below the toggle button
-        if (aiThinking.load())
-        {
-            // Show thinking text while background AI is running
-            renderer.DrawText(std::string("AI thinking..."), float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
-        }
-        else if (lastAIScoreValid) {
-            renderer.DrawText(lastAIScoreText, float(bx + 10), float(by + bh + 8), SevenWDuelRenderer::Colors::White);
-        }
-
         // -----------------------------------------------------------
         // Draw sliders (position them relative to toggle area)
         // -----------------------------------------------------------
@@ -597,12 +596,58 @@ int main(int argc, char** argv)
         if (uiState.leftClick && btnHovered)
         {
             onlyPlayer1Mouse = !onlyPlayer1Mouse;
+            if (onlyPlayer1Mouse) onlyPlayer2Mouse = false; // Mutually exclusive
             std::cout << "Only Player1 Mouse set to " << (onlyPlayer1Mouse ? "ON" : "OFF") << "\n";
 
             // Consume the click so renderer/game doesn't also act on it
             uiState.moveRequested = false;
             uiState.leftClick = false;
             uiState.rightClick = false;
+        }
+
+        // --------------------------
+        // Draw second toggle button (Only Player2 Mouse) below the first
+        // --------------------------
+        const int bx2 = bx;
+        const int by2 = by + bh + 10; // Below AI score text
+        bool btn2Hovered = uiState.mouseX >= bx2 && uiState.mouseX <= bx2 + bw &&
+                           uiState.mouseY >= by2 && uiState.mouseY <= by2 + bh;
+
+        SDL_Color bgColor2 = onlyPlayer2Mouse ? SDL_Color{ 24, 128, 24, 220 } : SDL_Color{ 48, 48, 48, 200 };
+        for (int yy = by2; yy < by2 + bh; ++yy)
+        {
+            renderer.DrawLine(float(bx2), float(yy), float(bx2 + bw), float(yy), bgColor2);
+        }
+
+        SDL_Color borderColor2 = btn2Hovered ? SDL_Color{ 255, 215, 0, 255 } : SDL_Color{ 200, 200, 200, 255 };
+        renderer.DrawRect(float(bx2), float(by2), float(bw), float(bh), borderColor2);
+
+        std::string label2 = std::string("Only Player2 Mouse: ") + (onlyPlayer2Mouse ? "ON" : "OFF");
+        renderer.DrawText(label2, float(bx2 + 10), float(by2 + 8), SevenWDuelRenderer::Colors::White);
+
+        // Handle second toggle click
+        if (uiState.leftClick && btn2Hovered)
+        {
+            onlyPlayer2Mouse = !onlyPlayer2Mouse;
+            if (onlyPlayer2Mouse) onlyPlayer1Mouse = false; // Mutually exclusive
+            std::cout << "Only Player2 Mouse set to " << (onlyPlayer2Mouse ? "ON" : "OFF") << "\n";
+
+            // Consume the click so renderer/game doesn't also act on it
+            uiState.moveRequested = false;
+            uiState.leftClick = false;
+            uiState.rightClick = false;
+        }
+
+        // --------------------------
+        // Draw last AI score (if available) below the previous button
+        // --------------------------
+        if (aiThinking.load())
+        {
+            // Show thinking text while background AI is running
+            renderer.DrawText(std::string("AI thinking..."), float(bx + 10), float(by2 + bh + 8), SevenWDuelRenderer::Colors::White);
+        }
+        else if (lastAIScoreValid) {
+            renderer.DrawText(lastAIScoreText, float(bx + 10), float(by2 + bh + 8), SevenWDuelRenderer::Colors::White);
         }
 
         // --------------------------
@@ -707,6 +752,14 @@ int main(int argc, char** argv)
             if (onlyPlayer1Mouse && gameController.m_gameState.getCurrentPlayerTurn() == 1)
             {
                 std::cout << "Mouse moves are disabled for player 2 (only player 1 may use the mouse). Ignoring requested move.\n";
+                uiState.moveRequested = false;
+                uiState.leftClick = false;
+                uiState.rightClick = false;
+            }
+            // If option enabled and current player is player 1, ignore mouse moves and inform.
+            else if (onlyPlayer2Mouse && gameController.m_gameState.getCurrentPlayerTurn() == 0)
+            {
+                std::cout << "Mouse moves are disabled for player 1 (only player 2 may use the mouse). Ignoring requested move.\n";
                 uiState.moveRequested = false;
                 uiState.leftClick = false;
                 uiState.rightClick = false;

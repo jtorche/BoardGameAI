@@ -1,13 +1,13 @@
 #pragma once
 
-#include "7WDuel/GameController.h"
+#include "BuildConfig.h"
 #include "AI.h"
 
-namespace sevenWD
+namespace bg
 {
 	//-------------------------------------------------------------------------------------------------
 	struct MinMaxAIHeuristic {
-		virtual float computeScore(const GameState& _gameState, u32 _maxPlayer, void* pThreadContext) const = 0;
+		virtual float computeScore(const GameController& _game, u32 _maxPlayer, void* pThreadContext) const = 0;
 	};
 
 	//-------------------------------------------------------------------------------------------------

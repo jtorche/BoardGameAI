@@ -49,7 +49,8 @@ namespace sevenWD
 		None,
 		Civil,
 		Military,
-		Science
+		Science,
+		Count,
 	};
 
 	struct GameController
@@ -69,6 +70,12 @@ namespace sevenWD
 			}
 		}
 
+		const GameContext* getContextPtr() const { return m_gameState.m_context; }
+
+		void makeDeterministic() {
+			m_gameState.makeDeterministic();
+		}
+
 		template<typename Fun>
 		void enumerateMoves(Fun&& _fun) const;
 
@@ -76,8 +83,35 @@ namespace sevenWD
 		u32 enumerateMoves(Move outMoves[], u32 bufferSize) const;
 		bool play(Move _move);
 
-		bool filterMove(Move _move) const;
-	
+		u32 getCurrentPlayerTurn() const { return m_gameState.getCurrentPlayerTurn(); }
+		u32 getWinner() const {
+			switch (m_gameState.m_state) {
+			case GameState::State::WinPlayer0:
+				return 0;
+			case GameState::State::WinPlayer1:
+				return 1;
+			default:
+				return UINT_MAX;
+			}
+		}
+
+		static const u32 TensorSize = GameState::TensorSize;
+		static const u32 ExtraTensorSize = GameState::ExtraTensorSize;
+
+		template<typename T>
+		u32 fillTensorData(T* _data, u32 _mainPlayer) const {
+			return m_gameState.fillTensorData(_data, _mainPlayer);
+		}
+		template<typename T>
+		void fillExtraTensorData(T* _data, u32 _mainPlayer) const {
+			m_gameState.fillExtraTensorData(_data, _mainPlayer);
+		}
+
+		u8 getNetId() const { 
+			u8 age = (u8)m_gameState.getCurrentAge();
+			return age == u8(-1) ? 0 : age;
+		}
+
 		GameState m_gameState;
 		WinType m_winType = WinType::None;
 

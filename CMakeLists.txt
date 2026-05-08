@@ -23,6 +23,8 @@ endif()
 
 option(USE_TORCH "Check it to enable Torch ML backend." ON)
 option(USE_SDL "Check it to enable all SDL based renderer." ON)
+option(BUILD_SEVEN_WD "Check it to build for seven wonder duel game." ON)
+option(BUILD_GUESS_NUMBER "Check it to build for Guess The Number game." OFF)
 
 if(USE_TORCH)
 	find_package(Torch REQUIRED)

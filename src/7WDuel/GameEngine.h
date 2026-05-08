@@ -153,7 +153,7 @@ namespace sevenWD
 
 		static const u32 ExtraTensorSize = 1 + TensorSizePerPlayableCard * 6 + TensorSizePerWonder * 4;
 		template<typename T>
-		void fillExtraTensorData(T* _data) const;
+		void fillExtraTensorData(T* _data, u32 _mainPlayer) const;
 
 		int getMilitary() const { return m_military; }
 

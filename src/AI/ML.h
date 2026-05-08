@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Common.h"
-#include "7WDuel/GameController.h"
+#include "BuildConfig.h"
 #include "AI.h"
 #include "MinMaxAI.h"
 #include <mutex>
@@ -52,7 +52,7 @@ struct BaseNN
 	tiny_dnn::network<tiny_dnn::sequential> m_net;
 
 	virtual void prepareAfterLoad() {}
-	virtual tiny_dnn::vec_t forward(const tiny_dnn::vec_t& x, void* pThreadContext, u32 netAge);
+	virtual tiny_dnn::vec_t forward(const tiny_dnn::vec_t& x, void* pThreadContext, u32 netIndex);
 	TinyDNN_Net& getNetwork() { return m_net; }
 #else
 	virtual torch::Tensor forward(torch::Tensor) { DEBUG_ASSERT(0); }
@@ -61,23 +61,20 @@ struct BaseNN
 	const char* getNetName() const { return getNetworkName(m_netType); }
 };
 
-struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
+struct BaseNetworkAI : AIInterface, bg::MinMaxAIHeuristic {
 	// Take std::array instead of C-style array
-	BaseNetworkAI(std::string name, const std::array<std::shared_ptr<BaseNN>, 3>& network) : m_name(std::move(name)), m_network(network) {
+	BaseNetworkAI(std::string name, const std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& network) : m_name(std::move(name)), m_network(network) {
 	}
 
 	struct ThreadContext {
 		const BaseNetworkAI* m_pThis;
-		BaseNN::TinyDNN_Net m_net[3];
-		float m_puctPriors[sevenWD::GameController::cMaxNumMoves] = { 0.f }; // Priors for PUCT search (used to train a NN-based MCTS AI)
+		BaseNN::TinyDNN_Net m_net[bg::cNumNetworks];
+		float m_puctPriors[bg::GameController::cMaxNumMoves] = { 0.f }; // Priors for PUCT search (used to train a NN-based MCTS AI)
 	};
 
-	float computeScore(const sevenWD::GameState& state, u32 maxPlayer, void* pContext) const {
-		u8 age = (u8)state.getCurrentAge();
-		age = age == u8(-1) ? 0 : age;
-		auto& network = m_network[age];
-
-		const u32 tensorSize = sevenWD::GameState::TensorSize + (network->m_extraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
+	float computeScore(const bg::GameController& state, u32 maxPlayer, void* pContext) const {
+		auto& network = m_network[state.getNetId()];
+		const u32 tensorSize = bg::GameController::TensorSize + (network->m_extraTensorData ? bg::GameController::ExtraTensorSize : 0);
 
 #if defined(USE_TINY_DNN)
 		tiny_dnn::vec_t buffer(tensorSize);
@@ -86,12 +83,12 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 #endif
 		state.fillTensorData(buffer.data(), 0);
 		if (network->m_extraTensorData)
-			state.fillExtraTensorData(buffer.data() + sevenWD::GameState::TensorSize);
+			state.fillExtraTensorData(buffer.data() + bg::GameController::TensorSize, 0);
 
 #if defined(USE_TINY_DNN)
 		ThreadContext* pThreadContext  = (ThreadContext*)pContext;
 		DEBUG_ASSERT(pThreadContext == nullptr || pThreadContext->m_pThis == this);
-		tiny_dnn::vec_t output = network->forward(buffer, pThreadContext, age);
+		tiny_dnn::vec_t output = network->forward(buffer, pThreadContext, state.getNetId());
 		float player0WinProbability = output[0];
 #else
 		torch::Tensor result = network->forward(torch::from_blob(buffer.data(), { 1, tensorSize }, torch::kFloat));
@@ -107,12 +104,12 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 		if (m_network[0] && m_network[1] && m_network[2]) {
 			ThreadContext* pContext = new ThreadContext{ this };
 			m_mutex.lock();
-			m_network[0]->getNetwork().save("tmp0_createPerThreadContext.bin");
-			m_network[1]->getNetwork().save("tmp1_createPerThreadContext.bin");
-			m_network[2]->getNetwork().save("tmp2_createPerThreadContext.bin");
-			pContext->m_net[0].load("tmp0_createPerThreadContext.bin");
-			pContext->m_net[1].load("tmp1_createPerThreadContext.bin");
-			pContext->m_net[2].load("tmp2_createPerThreadContext.bin");
+			char buffer[256];
+			for (u32 i = 0; i < bg::cNumNetworks; ++i) {
+				sprintf_s(buffer, "tmp%u_createPerThreadContext.bin", i);
+				m_network[i]->getNetwork().save(buffer);
+				pContext->m_net[i].load(buffer);
+			}
 			m_mutex.unlock();
 			return pContext;
 		}
@@ -129,8 +126,7 @@ struct BaseNetworkAI : sevenWD::AIInterface, sevenWD::MinMaxAIHeuristic {
 	void destroyPerThreadContext(void* ptr) const override { delete (ThreadContext*)ptr; }
 
 	std::string m_name;
-	// Use std::array for network storage
-	std::array<std::shared_ptr<BaseNN>, 3> m_network;	
+	std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks> m_network;	
 };
 
 struct SimpleNetworkAI : BaseNetworkAI
@@ -143,20 +139,20 @@ struct SimpleNetworkAI : BaseNetworkAI
 		return "SimpleNetworkAI_" + m_name;
 	}
 
-	std::pair<sevenWD::Move, float> selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& controller, const std::vector<sevenWD::Move>& _moves, void* pThreadContext) override
+	std::pair<bg::Move, float> selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& controller, const std::vector<bg::Move>& _moves, void* pThreadContext) override
 	{
 		std::vector<float> scores(_moves.size());
 
 		for (u32 i = 0; i < _moves.size(); ++i) {
-			sevenWD::GameController tmpController = controller;
+			bg::GameController tmpController = controller;
 			bool endGame = tmpController.play(_moves[i]);
 			if (endGame) {
-				u32 winner = (tmpController.m_gameState.m_state == sevenWD::GameState::State::WinPlayer0) ? 0 : 1;
-				scores[i] = (controller.m_gameState.getCurrentPlayerTurn() == winner) ? 1.0f : 0.0f;
+				u32 winner = (tmpController.getWinner() == 0) ? 0 : 1;
+				scores[i] = (controller.getCurrentPlayerTurn() == winner) ? 1.0f : 0.0f;
 			}
 			else {
-				u32 curPlayer = controller.m_gameState.getCurrentPlayerTurn();
-				scores[i] = computeScore(tmpController.m_gameState, curPlayer, pThreadContext);
+				u32 curPlayer = controller.getCurrentPlayerTurn();
+				scores[i] = computeScore(tmpController, curPlayer, pThreadContext);
 			}
 		}
 
@@ -197,10 +193,10 @@ struct ML_Toolbox
 
 	struct Dataset {
 		struct Point {
-			sevenWD::GameState m_state;
+			bg::SerializableGameState m_state;
 			u32 m_winner;
-			sevenWD::WinType m_winType;
-			float m_puctPriors[sevenWD::GameController::cMaxNumMoves];
+			bg::WinType m_winType;
+			float m_puctPriors[bg::GameController::cMaxNumMoves];
 		};
 
 		std::vector<Point> m_data;
@@ -209,7 +205,7 @@ struct ML_Toolbox
 
 		void printStats();
 
-		void prepareForTraining(const sevenWD::GameContext& sevenWDContext, u32 scienceWeight, u32 militaryWeight);
+		void prepareForTraining(const bg::GameContext& sevenWDContext, u32 (&victoryTypeWeight)[(u32)bg::WinType::Count]);
 
 		void operator+=(const Dataset& dataset) {
 			for (const Point& d : dataset.m_data)
@@ -222,11 +218,11 @@ struct ML_Toolbox
 #endif
 
 		bool saveToFile(const std::string& filename) const;
-		bool loadFromFile(const sevenWD::GameContext& context, const std::string& filename);
+		bool loadFromFile(const bg::GameContext& context, const std::string& filename);
 	};
 
-	static u32 generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext,
-		sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2]);
+	static u32 generateOneGameDatasSet(const bg::GameContext& sevenWDContext,
+		AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[bg::cNumNetworks], bg::WinType& winType, double(&thinkingTime)[2]);
 
 #ifdef USE_TINY_DNN
 	static void fillTensors(const Dataset& dataset, std::vector<tiny_dnn::vec_t>& outData, std::vector<tiny_dnn::vec_t>& outLabels);
@@ -246,15 +242,15 @@ struct ML_Toolbox
 	static void trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches, BaseNN* pNet, float alpha = 1e-3f);
 	static void trainNet(u32 age, u32 epoch, tiny_dnn::tensor_t& data, tiny_dnn::tensor_t& labels, BaseNN* pNet);
 	// APIs now use std::array instead of C arrays
-	static void saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, 3>& net);
-	static bool loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, 3>& net, bool useExtraTensorData);
-	static bool loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, 3>& net, std::string& outFullName);
+	static void saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net);
+	static bool loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net, bool useExtraTensorData);
+	static bool loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net, std::string& outFullName);
 
 	template<typename T>
 	static std::pair<T*, u32> loadAIFromFile(NetworkType netType, std::string namePrefix, bool useExtraTensorData)
 	{
 		u32 mostRecentGen = 0;
-		std::array<std::shared_ptr<BaseNN>, 3> net{ nullptr, nullptr, nullptr };
+		std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks> net;
 		std::string fullName;
 		if (loadLastGenNet(netType, namePrefix, useExtraTensorData, mostRecentGen, net, fullName)) {
 			return std::make_pair(new T(fullName, net), mostRecentGen);

@@ -3,7 +3,7 @@
 
 #include "Core/thread_pool.h"
 
-namespace sevenWD
+namespace bg
 {
 #ifdef _DEBUG
     thread_pool s_threadPool(1);
@@ -25,13 +25,13 @@ namespace sevenWD
         {
             GameController newGameState = _game;
 
-            u32 curPlayer = _game.m_gameState.getCurrentPlayerTurn();
+            u32 curPlayer = _game.getCurrentPlayerTurn();
             float score;
             if (newGameState.play(_move))
             {
-                if (curPlayer == 0 && newGameState.m_gameState.m_state == GameState::State::WinPlayer0)
+                if (curPlayer == 0 && newGameState.getWinner() == 0)
                     score = 1.0f;
-                else if (curPlayer == 1 && newGameState.m_gameState.m_state == GameState::State::WinPlayer1)
+                else if (curPlayer == 1 && newGameState.getWinner() == 1)
                     score = 1.0f;
                 else
                     score = 0.0f;
@@ -71,12 +71,12 @@ namespace sevenWD
 	//-------------------------------------------------------------------------------------------------
 	float MinMaxAI::evalRec(u32 _maxPlayer, const GameController& _gameState, u32 _depth, vec2 _a_b, void* pThreadContext)
 	{
-        bool isMaxPlayerTurn = _gameState.m_gameState.getCurrentPlayerTurn() == _maxPlayer;
+        bool isMaxPlayerTurn = _gameState.getCurrentPlayerTurn() == _maxPlayer;
 
         if (_depth >= m_maxDepth || m_stopAI)
         {
             n_numLeafEpxlored++;
-            return m_pHeuristic->computeScore(_gameState.m_gameState, _maxPlayer, nullptr);
+            return m_pHeuristic->computeScore(_gameState, _maxPlayer, nullptr);
         }
 
         std::vector<Move> moves;
@@ -101,9 +101,9 @@ namespace sevenWD
             float moveScore;
             if (gameTerminated)
             {
-                if (_maxPlayer == 0 && newGameState.m_gameState.m_state == GameState::State::WinPlayer0)
+                if (_maxPlayer == 0 && newGameState.getWinner() == 0)
                     moveScore = 1.0f;
-                else if(_maxPlayer == 1 && newGameState.m_gameState.m_state == GameState::State::WinPlayer1)
+                else if(_maxPlayer == 1 && newGameState.getWinner() == 1)
                     moveScore = 1.0f;
                 else
                     moveScore = 0.0f;

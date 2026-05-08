@@ -6,6 +6,14 @@ add_library(${PROJECT_NAME} ${ai_sources})
 
 target_precompile_headers(AI PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/precompiled_header.h)
 
+if (BUILD_SEVEN_WD)
+	target_compile_definitions(AI PUBLIC BUILD_FOR_7WDUEL)
+endif()
+if (BUILD_GUESS_NUMBER)
+	target_compile_definitions(AI PUBLIC BUILD_FOR_GUESSNUMBER)
+endif()
+
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(${PROJECT_NAME} PUBLIC ${TINY_DNN_INCLUDE_DIR})
 

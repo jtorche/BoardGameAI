@@ -1190,7 +1190,7 @@ namespace sevenWD
 	template u32 GameState::fillTensorData<int16_t>(int16_t* _data, u32 _mainPlayer) const;
 
 	template<typename T>
-	void GameState::fillExtraTensorData(T* _data) const
+	void GameState::fillExtraTensorData(T* _data, u32 _mainPlayer) const
 	{
 		memset(_data, 0, ExtraTensorSize * sizeof(T));
 
@@ -1257,8 +1257,8 @@ namespace sevenWD
 		}
 	}
 
-	template void GameState::fillExtraTensorData<float>(float* _data) const;
-	template void GameState::fillExtraTensorData<int16_t>(int16_t* _data) const;
+	template void GameState::fillExtraTensorData<float>(float* _data, u32 _mainPlayer) const;
+	template void GameState::fillExtraTensorData<int16_t>(int16_t* _data, u32 _mainPlayer) const;
 
 	template<typename T>
 	void GameState::fillTensorDataForPlayableCard(T* _data, u32 playableCard, u32 mainPlayer) const

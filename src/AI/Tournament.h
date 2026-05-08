@@ -1,6 +1,6 @@
 #pragma once
 
-#include "7WDuel/GameController.h"
+#include "BuildConfig.h"
 #include "AI.h"
 #include "ML.h"
 
@@ -11,15 +11,15 @@ public:
 
 	Tournament();
 
-	void addAI(sevenWD::AIInterface* pAI);
-	void generateDataset(const sevenWD::GameContext& context, u32 numGameToPlay, u32 numThreads);
-	void generateDatasetFromAI(const sevenWD::GameContext& context, sevenWD::AIInterface* pAI, u32 datasetSize);
+	void addAI(AIInterface* pAI);
+	void generateDataset(const bg::GameContext& context, u32 numGameToPlay, u32 numThreads);
+	void generateDatasetFromAI(const bg::GameContext& context, AIInterface* pAI, u32 datasetSize);
 	void removeWorstAI(u32 amountOfAIsToKeep);
 
-	void fillDataset(ML_Toolbox::Dataset (&dataset)[3]) const;
+	void fillDataset(ML_Toolbox::Dataset (&dataset)[bg::cNumNetworks]) const;
 	void resetTournament(float percentageOfGamesToKeep);
-	void playOneGame(const sevenWD::GameContext& context, std::array<ML_Toolbox::Dataset, 3>& threadSafeDataset, u32 i, u32 j, void* pAIContextI, void* pAIContextJ);
-	void playOneGame(const sevenWD::GameContext& context, u32 i, u32 j);
+	void playOneGame(const bg::GameContext& context, std::array<ML_Toolbox::Dataset, bg::cNumNetworks>& threadSafeDataset, u32 i, u32 j, void* pAIContextI, void* pAIContextJ);
+	void playOneGame(const bg::GameContext& context, u32 i, u32 j);
 
 	void print() const;
 	void serializeDataset(const std::string& filenamePrefix) const;
@@ -33,31 +33,31 @@ private:
 		u32 military = 0;
 		u32 science = 0;
 
-		void incr(sevenWD::WinType type) {
-			switch (type) {
-			case sevenWD::WinType::Civil:
-				civil++; break;
-			case sevenWD::WinType::Military:
-				military++; break;
-			case sevenWD::WinType::Science:
-				science++; break;
-			}
+		void incr(bg::WinType type) {
+			//switch (type) {
+			//case sevenWD::WinType::Civil:
+			//	civil++; break;
+			//case sevenWD::WinType::Military:
+			//	military++; break;
+			//case sevenWD::WinType::Science:
+			//	science++; break;
+			//}
 		}
 
-		u32 get(sevenWD::WinType type) const {
-			switch (type) {
-			case sevenWD::WinType::Civil:
-				return civil;
-			case sevenWD::WinType::Military:
-				return military;
-			case sevenWD::WinType::Science:
-				return science;
-			}
+		u32 get(bg::WinType type) const {
+			//switch (type) {
+			//case sevenWD::WinType::Civil:
+			//	return civil;
+			//case sevenWD::WinType::Military:
+			//	return military;
+			//case sevenWD::WinType::Science:
+			//	return science;
+			//}
 			return 0;
 		}
 	};
 
-	std::vector<sevenWD::AIInterface*> m_AIs;
+	std::vector<AIInterface*> m_AIs;
 
 	std::atomic_uint m_numGameInDataset = 0;
 	std::atomic_uint m_numGamePlayed = 0;
@@ -66,5 +66,5 @@ private:
 	std::vector<WinTypeCounter> m_winTypes;
 	std::vector<double> m_avgThinkingMsPerGame;
 
-	ML_Toolbox::Dataset m_dataset[3];
+	ML_Toolbox::Dataset m_dataset[bg::cNumNetworks];
 };

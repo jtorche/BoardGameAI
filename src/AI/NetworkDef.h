@@ -8,8 +8,7 @@ struct TwoLayers : BaseNN
 	TwoLayers(NetworkType netType, bool useExtraTensorData)
 		: BaseNN(netType, useExtraTensorData)
 	{
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
+		u32 tensorSize = bg::GameController::TensorSize + (useExtraTensorData ? bg::GameController::ExtraTensorSize : 0);
 
 		m_net // << tiny_dnn::batch_normalization_layer(1, tensorSize)
 			<< tiny_dnn::fully_connected_layer(tensorSize, SecondLayerSize)
@@ -161,8 +160,8 @@ struct BaseLine : BaseNN
 	BaseLine(NetworkType netType, bool useExtraTensorData)
 		: BaseNN(netType, useExtraTensorData)
 	{
-		u32 tensorSize = sevenWD::GameState::TensorSize +
-			(useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
+		u32 tensorSize = bg::GameController::TensorSize +
+			(useExtraTensorData ? bg::GameController::ExtraTensorSize : 0);
 
 		m_net << tiny_dnn::fully_connected_layer(tensorSize, 1) << tiny_dnn::sigmoid_layer();
 	}
@@ -176,8 +175,8 @@ struct MultiLayersPUCT : BaseNN
 	MultiLayersPUCT(NetworkType netType)
 		: BaseNN(netType, true)
 	{
-		u32 tensorSize = sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize;
-		constexpr u32 kOutSize = 1u + sevenWD::GameController::cMaxNumMoves;
+		u32 tensorSize = bg::GameController::TensorSize + bg::GameController::ExtraTensorSize;
+		constexpr u32 kOutSize = 1u + bg::GameController::cMaxNumMoves;
 
 		m_net << tiny_dnn::batch_normalization_layer(1, tensorSize);
 
@@ -285,10 +284,10 @@ struct MultiLayersPUCT : BaseNN
 
 		DEBUG_ASSERT(x.size() == m_inputSize);
 
-		constexpr u32 kOutSize = 1u + sevenWD::GameController::cMaxNumMoves;
+		constexpr u32 kOutSize = 1u + bg::GameController::cMaxNumMoves;
 
 		// BN output: bn[i] = (x[i] - mean[i]) / sqrt(var[i] + eps)
-		float bnOut[sevenWD::GameState::TensorSize + sevenWD::GameState::ExtraTensorSize];
+		float bnOut[bg::GameController::TensorSize + bg::GameController::ExtraTensorSize];
 		DEBUG_ASSERT(m_inputSize <= (sizeof(bnOut) / sizeof(bnOut[0])));
 
 		for (u32 i = 0; i < m_inputSize; ++i) {

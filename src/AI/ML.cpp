@@ -1,10 +1,10 @@
 #include "ML.h"
 #include "NetworkDef.h"
 
-u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDContext, 
-	sevenWD::AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[3], sevenWD::WinType& winType, double(&thinkingTime)[2])
+u32 ML_Toolbox::generateOneGameDatasSet(const bg::GameContext& sevenWDContext, 
+									    AIInterface* AIs[2], void* AIThreadContexts[2], std::vector<Dataset::Point>(&data)[bg::cNumNetworks], bg::WinType& winType, double(&thinkingTime)[2])
 {
-	using namespace sevenWD;
+	using namespace bg;
 	GameController game(sevenWDContext);
 
 	thinkingTime[0] = 0.0;
@@ -15,12 +15,12 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 	Move move;
 	do
 	{
-		if (prevPlayerTurn != u32(-1) && game.m_gameState.getCurrentAge() != u8(-1)) {
-			data[game.m_gameState.getCurrentAge()].push_back({ game.m_gameState });
-			AIs[prevPlayerTurn]->fillPUCTPriors(AIThreadContexts[prevPlayerTurn], data[game.m_gameState.getCurrentAge()].back().m_puctPriors);
+		if (prevPlayerTurn != u32(-1)) {
+			data[game.getNetId()].push_back({ game });
+			AIs[prevPlayerTurn]->fillPUCTPriors(AIThreadContexts[prevPlayerTurn], data[game.getNetId()].back().m_puctPriors);
 		}
 
-		u32 curPlayerTurn = game.m_gameState.getCurrentPlayerTurn();
+		u32 curPlayerTurn = game.getCurrentPlayerTurn();
 		game.enumerateMoves(moves);
 
 		{
@@ -42,14 +42,16 @@ u32 ML_Toolbox::generateOneGameDatasSet(const sevenWD::GameContext& sevenWDConte
 	} while (!game.play(move));
 
 	winType = game.m_winType;
-	return game.m_gameState.m_state == GameState::State::WinPlayer0 ? 0 : 1;
+	DEBUG_ASSERT(game.getWinner() != UINT_MAX);
+	return game.getWinner();
 }
 
 void ML_Toolbox::Dataset::printStats()
 {
-	using namespace sevenWD;
+	using namespace bg;
 
-	u32 winTypeCounts[4] = { 0, 0, 0, 0 };
+	u32 winTypeCounts[(u32)WinType::Count] = {};
+	memset(winTypeCounts, 0, sizeof(winTypeCounts));
 	u32 winnerCounts[2] = { 0, 0 };
 
 	for (const Point& pt : m_data) {
@@ -71,6 +73,7 @@ void ML_Toolbox::Dataset::printStats()
 	std::cout << "  Player0: " << winnerCounts[0] << "\n";
 	std::cout << "  Player1: " << winnerCounts[1] << "\n";
 
+#if defined(BUILD_FOR_7WDUEL)
 	std::cout << "Win type counts:\n";
 	std::cout << "  None:     " << winTypeCounts[(u32)WinType::None] << "\n";
 	std::cout << "  Civil:    " << winTypeCounts[(u32)WinType::Civil] << "\n";
@@ -90,13 +93,15 @@ void ML_Toolbox::Dataset::printStats()
 		std::cout << "  Player0:  " << pct(winnerCounts[0]) << "\n";
 		std::cout << "  Player1:  " << pct(winnerCounts[1]) << "\n";
 	}
+#endif
 }
 
-void ML_Toolbox::Dataset::prepareForTraining(const sevenWD::GameContext& sevenWDContext, u32 scienceWeight, u32 militaryWeight)
+void ML_Toolbox::Dataset::prepareForTraining(const bg::GameContext& sevenWDContext, u32(&victoryTypeWeight)[(u32)bg::WinType::Count])
 {
-	using namespace sevenWD;
+	using namespace bg;
 
-	u32 winTypeCounts[4] = { 0, 0, 0, 0 };
+	u32 winTypeCounts[(u32)WinType::Count] = {};
+	memset(winTypeCounts, 0, sizeof(winTypeCounts));
 	u32 winnerCounts[2] = { 0, 0 };
 
 	for (const Point& pt : m_data) {
@@ -114,13 +119,7 @@ void ML_Toolbox::Dataset::prepareForTraining(const sevenWD::GameContext& sevenWD
 	auto cpy = std::move(m_data);
 	for (const Point& pt : cpy) {
 		if (pt.m_winner < 2 && ((winnerCounts[pt.m_winner]++) < minNumWin)) {
-			u32 weight = 1;
-			if (pt.m_winType == WinType::Military) {
-				weight = std::max(weight, militaryWeight);
-			}
-			if (pt.m_winType == WinType::Science) {
-				weight = std::max(weight, scienceWeight);
-			}
+			u32 weight = victoryTypeWeight[(u32)pt.m_winType];
 			for (u32 i = 0; i < weight; ++i) {
 				m_data.push_back(pt);
 			}
@@ -135,9 +134,9 @@ void ML_Toolbox::Dataset::fillBatches(
 	std::vector<Batch>& batches,
 	bool useExtraTensorData, bool usePUCT) const
 {
-	using namespace sevenWD;
+	using namespace bg;
 
-	const u32 tensorSize = GameState::TensorSize + (useExtraTensorData ? GameState::ExtraTensorSize : 0);
+	const u32 tensorSize = GameController::TensorSize + (useExtraTensorData ? GameController::ExtraTensorSize : 0);
 
 #ifdef USE_TINY_DNN
 	// Tiny-dnn: store each batch as vector of vec_t
@@ -150,7 +149,7 @@ void ML_Toolbox::Dataset::fillBatches(
 			u32 curPlayer = m_data[j].m_state.getCurrentPlayerTurn();
 			m_data[j].m_state.fillTensorData(input.data(), curPlayer);
 			if (useExtraTensorData)
-				m_data[j].m_state.fillExtraTensorData(input.data() + GameState::TensorSize);
+				m_data[j].m_state.fillExtraTensorData(input.data() + GameController::TensorSize, curPlayer);
 
 			tiny_dnn::vec_t label(1 + (usePUCT ? GameController::cMaxNumMoves : 0));
 			label[0] = (m_data[j].m_winner == curPlayer) ? 1.0f : 0.0f;
@@ -203,11 +202,12 @@ void ML_Toolbox::Dataset::fillBatches(
 #ifdef USE_TINY_DNN
 void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, bool usePUCT, tiny_dnn::tensor_t& outData, tiny_dnn::tensor_t& outLabels) const
 {
+	using namespace bg;
 	outData.clear();
 	outLabels.clear();
 
-	const u32 baseSize = sevenWD::GameState::TensorSize;
-	const u32 extraSize = useExtraTensorData ? sevenWD::GameState::ExtraTensorSize : 0;
+	const u32 baseSize = GameController::TensorSize;
+	const u32 extraSize = useExtraTensorData ? GameController::ExtraTensorSize : 0;
 	const u32 tensorSize = baseSize + extraSize;
 
 	outData.reserve(m_data.size());
@@ -217,7 +217,7 @@ void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, bool usePUCT, tin
 		tiny_dnn::vec_t input(tensorSize);
 		pt.m_state.fillTensorData(input.data(), 0);
 		if (useExtraTensorData) {
-			pt.m_state.fillExtraTensorData(input.data() + baseSize);
+			pt.m_state.fillExtraTensorData(input.data() + baseSize, 0);
 		}
 		outData.emplace_back(std::move(input));
 
@@ -233,7 +233,7 @@ void ML_Toolbox::Dataset::fillBatches(bool useExtraTensorData, bool usePUCT, tin
 // ---------------------------------------------------------------------------
 bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
 {
-	using namespace sevenWD;
+	using namespace bg;
 	std::ofstream os(filename, std::ios::binary);
 	if (!os.good()) return false;
 
@@ -253,7 +253,7 @@ bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
 		os.write(reinterpret_cast<const char*>(&winType), sizeof(winType));
 		os.write(reinterpret_cast<const char*>(pt.m_puctPriors), sizeof(pt.m_puctPriors));
 
-		std::vector<u8> blob = sevenWD::Helper::serializeGameState(pt.m_state);
+		std::vector<u8> blob = pt.m_state.serializeGameState();
 		u32 blobSize = (u32)blob.size();
 		os.write(reinterpret_cast<const char*>(&blobSize), sizeof(blobSize));
 		if (blobSize > 0)
@@ -265,9 +265,9 @@ bool ML_Toolbox::Dataset::saveToFile(const std::string& filename) const
 	return os.good();
 }
 
-bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, const std::string& filename)
+bool ML_Toolbox::Dataset::loadFromFile(const bg::GameContext& context, const std::string& filename)
 {
-	using namespace sevenWD;
+	using namespace bg;
 	std::ifstream is(filename, std::ios::binary);
 	if (!is.good()) return false;
 
@@ -309,8 +309,8 @@ bool ML_Toolbox::Dataset::loadFromFile(const sevenWD::GameContext& context, cons
 		}
 
 		// deserialize into a GameState constructed with provided context
-		GameState state(context);
-		if (!sevenWD::Helper::deserializeGameState(context, blob, state))
+		SerializableGameState state(context);
+		if (!state.deserializeGameState(context, blob))
 			return false;
 
 		Point pt;
@@ -560,7 +560,7 @@ void ML_Toolbox::trainNet(u32 age, u32 epoch, const std::vector<Batch>& batches,
 
 std::string ML_Toolbox::buildNetFilename(std::string netName, std::string namePrefix, bool useExtraTensorData, u32 age, u32 generation) {
 	std::stringstream str;
-	str << "Dataset/net_" << netName << (useExtraTensorData ? "_extra" : "_base") << "_" << namePrefix << "_gen" << generation << "_age" << age;
+	str << bg::s_bgPrefix << "_Dataset/net_" << netName << (useExtraTensorData ? "_extra" : "_base") << "_" << namePrefix << "_gen" << generation << "_age" << age;
 #if defined(USE_TINY_DNN)
 	str << "_tinydnn";
 #endif
@@ -577,9 +577,9 @@ u32 ML_Toolbox::parseGenerationFromNetFilename(std::string filename) {
 	return (u32)atoi(buffer);
 }
 
-void ML_Toolbox::saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, 3>& net)
+void ML_Toolbox::saveNet(std::string namePrefix, u32 generation, const std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net)
 {
-	for (u32 i = 0; i < 3; ++i) {
+	for (u32 i = 0; i < bg::cNumNetworks; ++i) {
 		std::string filename = buildNetFilename(net[i]->getNetName(), namePrefix, net[i]->m_extraTensorData, i, generation);
 #ifdef USE_TINY_DNN
 		net[i]->getNetwork().save(filename);
@@ -617,9 +617,9 @@ std::shared_ptr<BaseNN> ML_Toolbox::constructNet(NetworkType type, bool hasExtra
 	}
 }
 
-bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, 3>& net, bool useExtraTensorData)
+bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 generation, std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net, bool useExtraTensorData)
 {
-	for (u32 i = 0; i < 3; ++i) {
+	for (u32 i = 0; i < bg::cNumNetworks; ++i) {
 		std::string filename = buildNetFilename(BaseNN::getNetworkName(netType), namePrefix, useExtraTensorData, i, generation);
 		if (std::filesystem::exists(filename)) {
 			net[i] = constructNet(netType, useExtraTensorData);
@@ -635,18 +635,19 @@ bool ML_Toolbox::loadNet(NetworkType netType, std::string namePrefix, u32 genera
 	return true;
 }
 
-bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, 3>& net, std::string& outFullName)
+bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, bool useExtraTensorData, u32& outGeneration, std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks>& net, std::string& outFullName)
 {
-	std::vector<std::string> networksFilenames[3];
+	std::vector<std::string> networksFilenames[bg::cNumNetworks];
 	try {
-		for (const auto& entry : std::filesystem::directory_iterator("Dataset/")) {
+		std::string folder = std::string(bg::s_bgPrefix) + "_Dataset/";
+		for (const auto& entry : std::filesystem::directory_iterator(folder.c_str())) {
 			if (!entry.is_regular_file()) continue;
 			std::string filename = entry.path().filename().u8string();
 			std::string networkName = std::string(BaseNN::getNetworkName(netType)) + (useExtraTensorData ? "_extra" : "_base") + "_" + namePrefix;
 			if (filename.find(networkName) != std::string::npos) {
-				if (filename.find("_age0") != std::string::npos) networksFilenames[0].push_back(filename);
-				else if (filename.find("_age1") != std::string::npos) networksFilenames[1].push_back(filename);
-				else if (filename.find("_age2") != std::string::npos) networksFilenames[2].push_back(filename);
+				if constexpr (bg::cNumNetworks > 0) { if (filename.find("_age0") != std::string::npos) networksFilenames[0].push_back(filename); }
+				if constexpr (bg::cNumNetworks > 1) { if (filename.find("_age1") != std::string::npos) networksFilenames[1].push_back(filename); }
+				if constexpr (bg::cNumNetworks > 2) { if (filename.find("_age2") != std::string::npos) networksFilenames[2].push_back(filename); }
 			}
 		}
 	}
@@ -657,7 +658,7 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 	if (networksFilenames[0].empty() || networksFilenames[0].size() != networksFilenames[1].size() || networksFilenames[0].size() != networksFilenames[2].size())
 		return false;
 
-	for (int age = 0; age < 3; ++age) std::sort(networksFilenames[age].begin(), networksFilenames[age].end());
+	for (int netId = 0; netId < bg::cNumNetworks; ++netId) std::sort(networksFilenames[netId].begin(), networksFilenames[netId].end());
 
 	u32 index = 0;
 	u32 mostRecentGen = 0;
@@ -669,15 +670,15 @@ bool ML_Toolbox::loadLastGenNet(NetworkType netType, std::string namePrefix, boo
 		}
 	}
 
-	for (int age = 0; age < 3; ++age) {
-		net[age] = constructNet(netType, useExtraTensorData);
-		std::string netFilePath = std::string("Dataset/") + networksFilenames[age][index];
+	for (int netId = 0; netId < bg::cNumNetworks; ++netId) {
+		net[netId] = constructNet(netType, useExtraTensorData);
+		std::string netFilePath = std::string(bg::s_bgPrefix) + "_Dataset/" + networksFilenames[netId][index];
 #ifdef USE_TINY_DNN
-		net[age]->getNetwork().load(netFilePath);
+		net[netId]->getNetwork().load(netFilePath);
 #else
-		torch::load(net[age], netFilePath);
+		torch::load(net[netId], netFilePath);
 #endif
-		net[age]->prepareAfterLoad();
+		net[netId]->prepareAfterLoad();
 	}
 
 	std::stringstream networkName;

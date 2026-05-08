@@ -26,13 +26,11 @@ namespace sevenWD
 				if (cost <= m_gameState.getCurrentPlayerCity().m_gold)
 				{
 					Move move = Move{ i, Move::Action::Pick };
-					if (!filterMove(move))
-						_fun(Move{ i, Move::Action::Pick });
+					_fun(move);	
 				}
 
 				Move move = Move{ i, Move::Action::Burn };
-				if (!filterMove(move))
-					_fun(Move{ i, Move::Action::Burn });
+				_fun(move);	
 			}
 
 			u8 totalUnbuilt = m_gameState.m_playerCity[0].m_unbuildWonderCount + m_gameState.m_playerCity[1].m_unbuildWonderCount;
@@ -236,17 +234,6 @@ namespace sevenWD
 
 		m_gameState.m_state = State::Play;
  
-		return false;
-	}
-
-	bool GameController::filterMove(Move /*_move*/) const
-	{
-		//if (_move.action == Move::Burn)
-		//{
-		//	if (m_gameState.getCurrentPlayerCity().m_gold > 10)
-		//		return true;
-		//}
-
 		return false;
 	}
 

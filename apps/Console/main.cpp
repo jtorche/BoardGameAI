@@ -3,8 +3,8 @@
 #include <windows.h>
 #include <execution>
 
-#include "7WDuel/GameController.h"
 
+#include "AI/BuildConfig.h"
 #include "AI/AI.h"
 #include "AI/ML.h"
 #include "AI/MCTS.h"
@@ -13,7 +13,7 @@
 #include "Core/StringUtil.h"
 
 using namespace std::chrono;
-using namespace sevenWD;
+using namespace bg;
 
 static NetworkType parseNetType(const std::string& netTypeStr)
 {
@@ -30,7 +30,7 @@ static NetworkType parseNetType(const std::string& netTypeStr)
     return NetworkType::Net_BaseLine;
 }
 
-static sevenWD::AIInterface* createAIByName(const std::string& name, bool strongPlayMode)
+static AIInterface* createAIByName(const std::string& name, bool strongPlayMode)
 {
 	using namespace StringUtil;
 
@@ -227,6 +227,7 @@ int main(int argc, char** argv)
             ("epochs", "Training epochs", cxxopts::value<uint32_t>()->default_value("16"))
             ("batch", "Batch size as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("32;32;32"))
             ("alpha", "Learning rate for optimizer as \"age1;age2;age3\"", cxxopts::value<std::string>()->default_value("0.001;0.001;0.001"))
+            ("victoryBias", "Victory bias multiplicator for prepareForTraining", cxxopts::value<uint32_t>()->default_value("2"))
             ("threads", "Num threads", cxxopts::value<uint32_t>()->default_value("16"))
             ("help", "Print help");
 
@@ -255,7 +256,7 @@ int main(int argc, char** argv)
 
 			u32 numAIsAdded = 0;
             for (const auto& name : aiNames) {
-                sevenWD::AIInterface* p = createAIByName(name, strongPlay);
+                AIInterface* p = createAIByName(name, strongPlay);
                 if (!p) {
                     std::cout << "Unknown AI name: " << name << " - skipping" << std::endl;
                     continue;
@@ -296,6 +297,7 @@ int main(int argc, char** argv)
             std::string netTypeStr = result["net"].as<std::string>();
             bool useExtra = result["extra"].as<bool>();
             uint32_t epochs = result["epochs"].as<uint32_t>();
+            uint32_t victoryBias = result["victoryBias"].as<uint32_t>();
 
             uint32_t batchSizes[3] = { 32, 32, 32 };
             {
@@ -341,7 +343,7 @@ int main(int argc, char** argv)
                 return 1;
             }
 
-            std::string datasetDir = "Dataset/";
+            std::string datasetDir = std::string(bg::s_bgPrefix) + "_Dataset/";
             GameContext context(42); // deterministic card tables; seed doesn't matter for deserializing
 
             ML_Toolbox::Dataset dataset[3];
@@ -359,26 +361,35 @@ int main(int argc, char** argv)
                     return 1;
                 }
 
-                dataset[age].prepareForTraining(context, 2, 2); // shuffle before training
+            #if defined(BUILD_FOR_7WDUEL)
+                u32 victoryBiasVec[(u32)bg::WinType::Count] = { 1u, 1u, victoryBias, victoryBias };
+            #else   
+                u32 victoryBiasVec[(u32)bg::WinType::Count];
+                memset(victoryBiasVec, 1, sizeof(victoryBiasVec));
+            #endif
+
+                dataset[age].prepareForTraining(context, victoryBiasVec); // shuffle before training
                 std::cout << "Loaded age " << age << " dataset: " << dataset[age].m_data.size() << " points." << std::endl;
             }
 
             // Construct nets for 3 ages
-            std::array<std::shared_ptr<BaseNN>, 3> nets = {
-                ML_Toolbox::constructNet(netType, useExtra),
-                ML_Toolbox::constructNet(netType, useExtra),
-                ML_Toolbox::constructNet(netType, useExtra)
-            };
+            std::array<std::shared_ptr<BaseNN>, bg::cNumNetworks> nets;
+            std::vector<int> netIds;
+            for (u32 i = 0; i < bg::cNumNetworks; ++i) {
+                nets[i] = ML_Toolbox::constructNet(netType, useExtra);
+                netIds.push_back(i);
+            }
 
             // Train per-age in parallel
             std::cout << "Lerning rates: " << alphas[0] << ", " << alphas[1] << ", " << alphas[2] << std::endl;
             std::cout << "batch sizes: " << batchSizes[0] << ", " << batchSizes[1] << ", " << batchSizes[2] << std::endl;
-            std::vector<int> ages = { 0, 1, 2 };
-            std::for_each(std::execution::par, ages.begin(), ages.end(), [&](int age) {
+            
+
+            std::for_each(std::execution::par, netIds.begin(), netIds.end(), [&](int netId) {
                 std::vector<ML_Toolbox::Batch> batches;
-                dataset[age].fillBatches(batchSizes[age], batches, useExtra, isPUCT);
-                std::cout << "Training net for age " << age << " over " << epochs << " epochs, " << batches.size() << " batches." << std::endl;
-                ML_Toolbox::trainNet((u32)age, epochs, batches, nets[age].get(), alphas[age]);
+                dataset[netId].fillBatches(batchSizes[netId], batches, useExtra, isPUCT);
+                std::cout << "Training net for age " << netId << " over " << epochs << " epochs, " << batches.size() << " batches." << std::endl;
+                ML_Toolbox::trainNet((u32)netId, epochs, batches, nets[netId].get(), alphas[netId]);
             });
 
             u32 generation = result["gen"].as<u32>();
@@ -395,7 +406,7 @@ int main(int argc, char** argv)
             Tournament tournament;
             tournament.deserializeDataset(inPrefix);
 
-            ML_Toolbox::Dataset dataset[3];
+            ML_Toolbox::Dataset dataset[bg::cNumNetworks];
             tournament.fillDataset(dataset);
 
             for (u32 age = 0; age < 3; ++age) {
@@ -413,20 +424,20 @@ int main(int argc, char** argv)
             }
             std::vector<std::string> prefixes = StringUtil::split_char(inPrefix, ',');
             Tournament tournament;
-            ML_Toolbox::Dataset mergedDatasets[3];
+            ML_Toolbox::Dataset mergedDatasets[bg::cNumNetworks];
             for (const auto& prefix : prefixes) {
                 Tournament t;
                 t.deserializeDataset(prefix);
-                ML_Toolbox::Dataset dataset[3];
+                ML_Toolbox::Dataset dataset[bg::cNumNetworks];
                 t.fillDataset(dataset);
-                for (u32 age = 0; age < 3; ++age) {
+                for (u32 age = 0; age < bg::cNumNetworks; ++age) {
                     mergedDatasets[age] += dataset[age];
                 }
             }
             // Serialize merged datasets
-            for (u32 age = 0; age < 3; ++age) {
+            for (u32 age = 0; age < bg::cNumNetworks; ++age) {
                 std::stringstream ss;
-                ss << "Dataset/" << outPrefix << "_dataset_age" << age << ".bin";
+                ss << bg::s_bgPrefix << "_Dataset/" << outPrefix << "_dataset_age" << age << ".bin";
                 std::string path = ss.str();
                 bool ok = mergedDatasets[age].saveToFile(path);
                 if (!ok) {

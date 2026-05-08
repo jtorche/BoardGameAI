@@ -15,7 +15,14 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>)
 
 # Linked libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE Core 7WDuelEngine AI)
+target_link_libraries(${PROJECT_NAME} PRIVATE Core AI)
+
+if (BUILD_SEVEN_WD)
+	target_link_libraries(${PROJECT_NAME} PRIVATE 7WDuelEngine)
+endif()
+if (BUILD_GUESS_NUMBER)
+	target_link_libraries(${PROJECT_NAME} PRIVATE GuessNumberGame)
+endif()
 
 # For nicer IDE views
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "apps")

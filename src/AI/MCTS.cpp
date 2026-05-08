@@ -4,13 +4,13 @@
 // --------------------------------------------- //
 // ---------------- MCTS_Simple ---------------- //
 // --------------------------------------------- //
-std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
+std::pair<bg::Move, float> MCTS_Simple::selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	std::vector<float> scores(_moves.size());
 	std::vector<Move> curMoves;
-	unsigned int rootPlayer = _game.m_gameState.getCurrentPlayerTurn();
+	unsigned int rootPlayer = _game.getCurrentPlayerTurn();
 
 	for (u32 i = 0; i < _moves.size(); ++i) {
 		for (u32 j = 0; j < m_numSimu; ++j) {
@@ -24,10 +24,10 @@ std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameConte
 
 			float s = 0;
 			if (end) {
-				if (game.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
+				if (game.getWinner() == 0 && rootPlayer == 0) {
 					s = 1.0;
 				}
-				else if (game.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
+				else if (game.getWinner() == 1 && rootPlayer == 1) {
 					s = 1.0;
 				}
 				else {
@@ -35,7 +35,7 @@ std::pair<sevenWD::Move, float> MCTS_Simple::selectMove(const sevenWD::GameConte
 				}
 			}
 			else {
-				s = computeScore(game.m_gameState, rootPlayer, pThreadContext);
+				s = computeScore(game, rootPlayer, pThreadContext);
 			}
 
 			scores[i] += s;
@@ -56,9 +56,9 @@ MCTS_Deterministic::MCTS_Deterministic(u32 numMoves, u32 numGameState, bool mt) 
 	}
 }
 
-std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
+std::pair<bg::Move, float> MCTS_Deterministic::selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	float maxDepthAvg;
 	std::vector<u32> sampledVisits(_moves.size(), 0);
@@ -74,7 +74,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 		for (u32 i = start; i < end; ++i) {
 			u32 maxDepth = 0;
 			MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
-			pRoot->m_gameState.m_gameState.makeDeterministic();
+			pRoot->m_gameState.makeDeterministic();
 			initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator);
 			for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
 				u32 depth = 0;
@@ -147,7 +147,7 @@ std::pair<sevenWD::Move, float> MCTS_Deterministic::selectMove(const sevenWD::Ga
 	return { _moves[bestIndex], scores[bestIndex] };
 }
 
-void  MCTS_Deterministic::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator)
+void  MCTS_Deterministic::initRoot(MTCS_Node* pNode, const bg::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator)
 {
 	DEBUG_ASSERT(pNode->m_numChildren == 0);
 	DEBUG_ASSERT(pNode->m_numUnexploredMoves == 0);
@@ -159,7 +159,7 @@ void  MCTS_Deterministic::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[]
 	}
 
 	for (u32 i = 0; i < numMoves; ++i) {
-		sevenWD::GameController newGameState = pNode->m_gameState;
+		bg::GameController newGameState = pNode->m_gameState;
 		newGameState.play(moves[i]);
 		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, moves[i], newGameState);
 		pNode->m_children[pNode->m_numChildren++] = pChildNode;
@@ -179,9 +179,8 @@ MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode, u32& depth)
 			MTCS_Node* pChild = pNode->m_children[i];
 
 			// Special-case: if any child is an immediate winning move for the player who played it, take it.
-			sevenWD::GameController::State st = pChild->m_gameState.m_gameState.m_state;
-			if (st == sevenWD::GameState::State::WinPlayer0 || st == sevenWD::GameState::State::WinPlayer1) {
-				u32 winner = (st == sevenWD::GameState::State::WinPlayer0) ? 0u : 1u;
+			u32 winner = pChild->m_gameState.getWinner();
+			if (winner != UINT_MAX) {
 				// owner is the player who made the move that produced this child
 				u32 owner = pNode->m_playerTurn;
 				if (owner == winner) {
@@ -203,7 +202,9 @@ MTCS_Node* MCTS_Deterministic::selection(MTCS_Node* pNode, u32& depth)
 
 MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator& linAllocator)
 {
-	if (pNode->m_gameState.m_winType != sevenWD::WinType::None) {
+	using namespace bg;
+
+	if (pNode->m_gameState.m_winType != WinType::None) {
 		return pNode;
 	}
 	else {
@@ -215,7 +216,7 @@ MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator
 			DEBUG_ASSERT(pNode->m_numUnexploredMoves > 0);
 
 			if (pNode->m_numUnexploredMoves > pNode->m_moveStorage.size()) {
-				pNode->m_pMoves = new sevenWD::Move[pNode->m_numUnexploredMoves];
+				pNode->m_pMoves = new Move[pNode->m_numUnexploredMoves];
 				pNode->m_children = new MTCS_Node*[pNode->m_numUnexploredMoves];
 				pNode->m_gameState.enumerateMoves(pNode->m_pMoves, pNode->m_numUnexploredMoves);
 			}
@@ -223,12 +224,12 @@ MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator
 
 		// expand
 		u32 moveIndex = m_rand() % pNode->m_numUnexploredMoves;
-		sevenWD::Move move = pNode->m_pMoves[moveIndex];
+		Move move = pNode->m_pMoves[moveIndex];
 		// remove move from unexplored moves
 		pNode->m_pMoves[moveIndex] = pNode->m_pMoves[pNode->m_numUnexploredMoves - 1];
 		--pNode->m_numUnexploredMoves;
 		// create child node
-		sevenWD::GameController newGameState = pNode->m_gameState;
+		GameController newGameState = pNode->m_gameState;
 		newGameState.play(move);
 		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, move, newGameState);
 		pNode->m_children[pNode->m_numChildren++] = pChildNode;
@@ -236,16 +237,15 @@ MTCS_Node* MCTS_Deterministic::expansion(MTCS_Node* pNode, core::LinearAllocator
 	}
 }
 
-std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext)
+std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<bg::Move>& scratchMoves, void* pThreadContext)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	const u32 rootPlayer = pNode->m_playerTurn;
 
 	if (pNode->m_gameState.m_winType != WinType::None) {
-		GameController::State state = pNode->m_gameState.m_gameState.m_state;
-		float reward = (state == GameState::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) : 
-			           (state == GameState::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
+		float reward =  (pNode->m_gameState.getWinner() == 0) ? (rootPlayer == 0 ? 1.0f : 0.0f) :
+			           ((pNode->m_gameState.getWinner() == 1) ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
 		return { reward, rootPlayer };
 	}
 
@@ -263,6 +263,7 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 		}
 
 		bool hasMoved = false;
+#if defined(BUILD_FOR_7WDUEL)
 		if (m_heuristic == Heuristic_NoBurnRollout) {
 			// choose randomely among non-burn moves if possible
 			u32 numNonBurnMoves = 0;
@@ -286,7 +287,7 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 				}
 			}
 		}
-
+#endif
 		if (!hasMoved) {
 			Move move = scratchMoves[m_rand() % scratchMoves.size()];
 			end = controller.play(move);
@@ -295,10 +296,10 @@ std::pair<float, u32> MCTS_Deterministic::playout(MTCS_Node* pNode, std::vector<
 
 	// compute reward from root player perspective
 	float reward = 0.0f;
-	if (controller.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
+	if (controller.getWinner() == 0 && rootPlayer == 0) {
 		reward = 1.0f;
 	}
-	else if (controller.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
+	else if (controller.getWinner() == 1 && rootPlayer == 1) {
 		reward = 1.0f;
 	}
 	else {
@@ -349,9 +350,9 @@ void MCTS_Zero::enableMT()
 	}
 }
 
-std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext& _sevenWDContext, const sevenWD::GameController& _game, const std::vector<sevenWD::Move>& _moves, void* pThreadContext)
+std::pair<bg::Move, float> MCTS_Zero::selectMove(const bg::GameContext& _sevenWDContext, const bg::GameController& _game, const std::vector<bg::Move>& _moves, void* pThreadContext)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	float maxDepthAvg = 0;
 	std::vector<u32> sampledVisits(_moves.size(), 0);
@@ -369,7 +370,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 			for (u32 i = start; i < end; ++i) {
 				u32 maxDepth = 0;
 				MTCS_Node* pRoot = linAllocator.allocate<MTCS_Node>((MTCS_Node*)nullptr, Move{}, _game);
-				pRoot->m_gameState.m_gameState.makeDeterministic();
+				pRoot->m_gameState.makeDeterministic();
 				initRoot(pRoot, _moves.data(), (u32)_moves.size(), linAllocator, pThreadContext);
 				for (unsigned int iter = 0; iter < m_numMoves; ++iter) {
 					u32 depth = 0;
@@ -395,7 +396,7 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 				maxDepthAvg += (float)maxDepth;
 
 				// Get context from game state
-				const sevenWD::GameContext* pContext = pRoot->m_gameState.m_gameState.m_context;
+				const bg::GameContext* pContext = pRoot->m_gameState.getContextPtr();
 
 				// About m_useBestAvgSampledScenario:
 				// In case of many samplings, we can use the best move in avg regarding all sampled states, 
@@ -465,9 +466,6 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 
 	maxDepthAvg = maxDepthAvg / (m_numSampling + numExtraSamplings);
 
-	// Get context from game state
-	const sevenWD::GameContext* pContext = _game.m_gameState.m_context;
-
 	// Compute scores for each move
 	for (u32 i = 0; i < sampledVisits.size(); ++i) {
 		scores[i] /= (m_useBestAvgSampledScenario ? (m_numSampling + numExtraSamplings) : std::max(1u, sampledVisits[i]));
@@ -477,11 +475,13 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 	u32 selectedIndex = u32(-1);
 
 	float temperature = m_temperature;
+#if defined(BUILD_FOR_7WDUEL)
 	if (_game.m_gameState.getCurrentAge() == 1) {
 		temperature *= 0.5; // lower temperature in second age to favor stronger moves
 	} else if (_game.m_gameState.getCurrentAge() == 2) {
 		temperature = 0.f;
 	}
+#endif
 	
 	if (temperature <= 0.0f) {
 		// Greedy selection: pick move with most visits
@@ -552,67 +552,69 @@ std::pair<sevenWD::Move, float> MCTS_Zero::selectMove(const sevenWD::GameContext
 
 void MCTS_Zero::computeNNInference(MTCS_Node* pNode, void* pContext) const
 {
-	const sevenWD::GameState& state = pNode->m_gameState.m_gameState;
+	const bg::GameController& state = pNode->m_gameState;
 	u32 curPlayer = pNode->m_playerTurn;
+	auto& network = m_network[state.getNetId()];
 
-	u8 age = (u8)state.getCurrentAge();
-	age = age == u8(-1) ? 0 : age;
-	auto& network = m_network[age];
-
-	const u32 tensorSize = sevenWD::GameState::TensorSize + (network->m_extraTensorData ? sevenWD::GameState::ExtraTensorSize : 0);
+	const u32 tensorSize = bg::GameController::TensorSize + (network->m_extraTensorData ? bg::GameController::ExtraTensorSize : 0);
 
 #if defined(USE_TINY_DNN)
 	tiny_dnn::vec_t buffer(tensorSize);
 	state.fillTensorData(buffer.data(), curPlayer);
 	if (network->m_extraTensorData)
-		state.fillExtraTensorData(buffer.data() + sevenWD::GameState::TensorSize);
+		state.fillExtraTensorData(buffer.data() + bg::GameController::TensorSize, curPlayer);
 
 	ThreadContext* pThreadContext = (ThreadContext*)pContext;
 	DEBUG_ASSERT(pThreadContext == nullptr || pThreadContext->m_pThis == this);
-	tiny_dnn::vec_t output = network->forward(buffer, pThreadContext, age);
+	tiny_dnn::vec_t output = network->forward(buffer, pThreadContext, state.getNetId());
 
 	float curPlayerWinProbability = output[0];
 	pNode->m_nnHeuristic = curPlayerWinProbability;
-	memcpy(pNode->m_puctPriors, &output[1], sizeof(float) * sevenWD::GameController::cMaxNumMoves);
+	memcpy(pNode->m_puctPriors, &output[1], sizeof(float) * bg::GameController::cMaxNumMoves);
 #else
 	DEBUG_ASSERT(false);
 #endif
 }
 
-void MCTS_Zero::initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const sevenWD::Move moves[], u32 numMoves) const
+void MCTS_Zero::initPUCTPriors(MTCS_Node* pNode, void* pThreadContext, const bg::Move moves[], u32 numMoves) const
 {
-	if (m_useNNHeuristic && !pNode->m_gameState.m_gameState.isDraftingWonders()) {
+	if (m_useNNHeuristic 
+#if defined(BUILD_FOR_7WDUEL)
+		&& !pNode->m_gameState.m_gameState.isDraftingWonders()
+#endif
+		) {
 		computeNNInference(pNode, pThreadContext);
-
 	} else {
-		for (u32 i = 0; i < sevenWD::GameController::cMaxNumMoves; ++i) {
-			pNode->m_puctPriors[i] = 1.f / sevenWD::GameController::cMaxNumMoves;
+		for (u32 i = 0; i < bg::GameController::cMaxNumMoves; ++i) {
+			pNode->m_puctPriors[i] = 1.f / bg::GameController::cMaxNumMoves;
 		}
 	}
 
 	// Get context from the game state
-	const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
+	const bg::GameContext* pContext = pNode->m_gameState.getContextPtr();
 
 	// Mask non valid moves and normalize the output probability
-	float mask[sevenWD::GameController::cMaxNumMoves] = { 0 };
+	float mask[bg::GameController::cMaxNumMoves] = { 0 };
 	for (u32 i = 0; i < numMoves; ++i) {
 		const u32 fixedIndex = moves[i].computeMoveFixedIndex(*pContext);
 		mask[fixedIndex] = 1.0;
 
+#if defined(BUILD_FOR_7WDUEL)
 		if (moves[i].action == sevenWD::Move::Action::Pick && m_scienceBoost > 0.f) {
 			if (pNode->m_gameState.m_gameState.getPlayableCard(moves[i].playableCard).getType() == sevenWD::CardType::Science) {
 				pNode->m_puctPriors[fixedIndex] += m_scienceBoost;
 			}
 		}
+#endif
 	}
 
 	float sum = cEpsilon;
-	for (u32 i = 0; i < sevenWD::GameController::cMaxNumMoves; ++i) {
+	for (u32 i = 0; i < bg::GameController::cMaxNumMoves; ++i) {
 		sum += pNode->m_puctPriors[i] * mask[i];
 	}
 
 	float invSum = 1.0f / sum;
-	for (u32 i = 0; i < sevenWD::GameController::cMaxNumMoves; ++i) {
+	for (u32 i = 0; i < bg::GameController::cMaxNumMoves; ++i) {
 		pNode->m_puctPriors[i] = pNode->m_puctPriors[i] * mask[i] * invSum;
 	}
 }
@@ -632,16 +634,16 @@ static std::vector<float> sample_dirichlet(int A, float alpha, std::mt19937& rng
 	return noise;
 }
 
-void MCTS_Zero::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext)
+void MCTS_Zero::initRoot(MTCS_Node* pNode, const bg::Move moves[], u32 numMoves, core::LinearAllocator& linAllocator, void* pThreadContext)
 {
 	DEBUG_ASSERT(pNode->m_numChildren == 0);
 	if (numMoves > pNode->m_childrenStorage.size()) {
-		pNode->m_pMoves = new sevenWD::Move[numMoves];
+		pNode->m_pMoves = new bg::Move[numMoves];
 		pNode->m_children = new MTCS_Node * [numMoves];
 	}
 
 	for (u32 i = 0; i < numMoves; ++i) {
-		sevenWD::GameController newGameState = pNode->m_gameState;
+		bg::GameController newGameState = pNode->m_gameState;
 		newGameState.play(moves[i]);
 		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, moves[i], newGameState);
 		pNode->m_pMoves[i] = moves[i];
@@ -657,7 +659,7 @@ void MCTS_Zero::initRoot(MTCS_Node* pNode, const sevenWD::Move moves[], u32 numM
 		float alpha = 0.3f;
 		std::vector<float> noise = sample_dirichlet(numMoves, alpha, m_rand);
 		// Get context from the game state
-		const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
+		const bg::GameContext* pContext = pNode->m_gameState.getContextPtr();
 		for (u32 a = 0; a < numMoves; ++a) {
 			u32 id = moves[a].computeMoveFixedIndex(*pContext);
 			pNode->m_puctPriors[id] = (1.0f - epsilon) * pNode->m_puctPriors[id] + epsilon * noise[a];
@@ -669,7 +671,7 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 {
 	depth++;
 
-	if (pNode->m_gameState.m_winType != sevenWD::WinType::None) {
+	if (pNode->m_gameState.m_winType != bg::WinType::None) {
 		return pNode;
 	}
 
@@ -677,7 +679,7 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 		// First time we see this node, initialize it
 		u32 numMoves = (u16)pNode->m_gameState.enumerateMoves(pNode->m_pMoves, (u32)pNode->m_moveStorage.size());
 		if (numMoves > pNode->m_moveStorage.size()) {
-			pNode->m_pMoves = new sevenWD::Move[numMoves];
+			pNode->m_pMoves = new bg::Move[numMoves];
 			pNode->m_children = new MTCS_Node*[numMoves];
 			pNode->m_gameState.enumerateMoves(pNode->m_pMoves, numMoves);
 		}
@@ -698,16 +700,15 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 	const float parentVisits = static_cast<float>(pNode->m_visits) + 1.0f;
 
 	// Get context from the game state
-	const sevenWD::GameContext* pContext = pNode->m_gameState.m_gameState.m_context;
+	const bg::GameContext* pContext = pNode->m_gameState.getContextPtr();
 
 	for (u32 i = 0; i < pNode->m_numChildren; ++i) {
 		MTCS_Node* pChild = pNode->m_children[i];
 
 		if (pChild) {
 			// Early-out: if this child is an immediate win for the player who played it, take it.
-			sevenWD::GameController::State st = pChild->m_gameState.m_gameState.m_state;
-			if (st == sevenWD::GameState::State::WinPlayer0 || st == sevenWD::GameState::State::WinPlayer1) {
-				u32 winner = (st == sevenWD::GameState::State::WinPlayer0) ? 0u : 1u;
+			if (pChild->m_gameState.getWinner() != UINT_MAX) {
+				u32 winner = pChild->m_gameState.getWinner();
 				u32 owner = pNode->m_playerTurn; // player that chose this move
 				if (owner == winner) {
 					return pChild;
@@ -735,7 +736,7 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 	}
 
 	if (pNode->m_children[bestChildIdx] == nullptr) {
-		sevenWD::GameController newGameState = pNode->m_gameState;
+		bg::GameController newGameState = pNode->m_gameState;
 		newGameState.play(pNode->m_pMoves[bestChildIdx]);
 		MTCS_Node* pChildNode = linAllocator.allocate<MTCS_Node>(pNode, pNode->m_pMoves[bestChildIdx], newGameState);
 		pNode->m_children[bestChildIdx] = pChildNode;
@@ -743,16 +744,14 @@ MTCS_Node* MCTS_Zero::selection(MTCS_Node* pNode, u32& depth, core::LinearAlloca
 	return selection(pNode->m_children[bestChildIdx], depth, linAllocator, pThreadContext);
 }
 
-std::pair<float, u32> MCTS_Zero::playout(MTCS_Node* pNode, std::vector<sevenWD::Move>& scratchMoves, void* pThreadContext)
+std::pair<float, u32> MCTS_Zero::playout(MTCS_Node* pNode, std::vector<bg::Move>& scratchMoves, void* pThreadContext)
 {
-	using namespace sevenWD;
+	using namespace bg;
 
 	const u32 rootPlayer = pNode->m_playerTurn;
 
 	if (pNode->m_gameState.m_winType != WinType::None) {
-		GameController::State state = pNode->m_gameState.m_gameState.m_state;
-		float reward = (state == GameState::State::WinPlayer0) ? (rootPlayer == 0 ? 1.0f : 0.0f) :
-			(state == GameState::State::WinPlayer1 ? (rootPlayer == 1 ? 1.0f : 0.0f) : 0.0f);
+		float reward = pNode->m_gameState.getWinner() == rootPlayer ? 1.0f : 0.0f; 
 		return { reward, rootPlayer };
 	}
 
@@ -771,16 +770,9 @@ std::pair<float, u32> MCTS_Zero::playout(MTCS_Node* pNode, std::vector<sevenWD::
 
 	// compute reward from root player perspective
 	float reward = 0.0f;
-	if (controller.m_gameState.m_state == GameState::State::WinPlayer0 && rootPlayer == 0) {
+	if (controller.getWinner() == rootPlayer) {
 		reward = 1.0f;
 	}
-	else if (controller.m_gameState.m_state == GameState::State::WinPlayer1 && rootPlayer == 1) {
-		reward = 1.0f;
-	}
-	else {
-		reward = 0.0f;
-	}
-
 	return { reward, rootPlayer };
 }
 
